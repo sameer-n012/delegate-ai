@@ -8,3 +8,19 @@
 <a class="tl" href="/p/{{ key }}/t/{{ t.ref }}" hx-get="/p/{{ key }}/t/{{ t.ref }}" hx-target="#drawer-body" hx-push-url="true">
   <b>{{ t.ref }}</b> {{ t.title }}</a>
 {% endmacro %}
+
+{% macro state_badge(project) %}<span class="sbadge st-{{ project.state.value }}">{{ STATE_LABELS[project.state.value] }}</span>{% endmacro %}
+
+{# Human-only state picker. view is "card" or "board" and tells the server what to re-render. #}
+{% macro state_form(project, view, target) %}
+<form class="stateform" method="post" action="/p/{{ project.key }}/state"
+      hx-post="/p/{{ project.key }}/state" hx-trigger="change" hx-target="{{ target }}" hx-swap="outerHTML"
+      data-current="{{ project.state.value }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <label>State
+    <select name="state">
+      {% for s in PROJECT_STATES %}<option value="{{ s }}"{% if s == project.state.value %} selected{% endif %}>{{ STATE_LABELS[s] }}</option>{% endfor %}
+    </select></label>
+  <noscript><button type="submit">Apply</button></noscript>
+</form>
+{% endmacro %}

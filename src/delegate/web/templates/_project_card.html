@@ -1,0 +1,19 @@
+{% import "_macros.html" as m %}
+<article class="pcard st-{{ c.project.state.value }}" id="pcard-{{ c.project.key }}">
+  <div class="phead">
+    <span class="pkey">{{ c.project.key }}</span>
+    <a class="pname" href="/p/{{ c.project.key }}">{{ c.project.name }}</a>
+    {{ m.state_badge(c.project) }}
+  </div>
+  <div class="proot">{{ c.project.root_path }}</div>
+  <ul class="counts">
+    {% for s in ['todo','in_progress','review','blocked','done'] %}
+    <li class="s-{{ s }}{% if not c.counts.get(s) %} zero{% endif %}"><b>{{ c.counts.get(s, 0) }}</b> {{ COLUMN_LABELS[s] }}</li>
+    {% endfor %}
+  </ul>
+  <div class="pfoot">
+    <span class="agents{% if c.agents %} live{% endif %}" title="Agents active in the last 30 minutes">
+      <i class="dot"></i>{{ c.agents }} active {{ 'agent' if c.agents == 1 else 'agents' }}</span>
+    {{ m.state_form(c.project, "card", "#pcard-" ~ c.project.key) }}
+  </div>
+</article>

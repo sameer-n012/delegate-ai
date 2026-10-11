@@ -50,12 +50,14 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 .page h1 { margin-bottom: 14px; font-size: 22px; }
 .errtext { color: var(--blocked); }
 .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
-.pcard { display: block; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
-.pcard:hover { border-color: var(--accent); text-decoration: none; }
+.pcard { position: relative; display: block; padding: 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; color: var(--text); }
+.pcard:hover, .pcard:focus-within { border-color: var(--accent); }
+.pcard.st-deleted { opacity: .7; border-style: dashed; }
 .phead { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .pkey { font-weight: 700; color: var(--accent); }
-.pname { font-weight: 600; font-size: 16px; }
-.agents { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.pname { font-weight: 600; font-size: 16px; color: var(--text); }
+.pname::after { content: ""; position: absolute; inset: 0; } /* whole card is the link */
+.agents { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .proot { color: var(--muted); font-size: 12px; word-break: break-all; }
 .counts { list-style: none; display: flex; gap: 6px; padding: 0; margin: 12px 0 0; flex-wrap: wrap; }
 .counts li { padding: 3px 8px; border-left: 3px solid var(--c, var(--line)); background: var(--raised); font-size: 12px; }
@@ -63,6 +65,30 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 .counts li.zero { opacity: .5; }
 .s-todo { --c: var(--todo); } .s-in_progress { --c: var(--in_progress); } .s-review { --c: var(--review); }
 .s-blocked { --c: var(--blocked); } .s-done { --c: var(--done); } .s-cancelled { --c: var(--cancelled); }
+
+/* project state, filters */
+.st-not_started { --c: var(--todo); } .st-in_progress { --c: var(--in_progress); } .st-complete { --c: var(--done); }
+.st-inactive { --c: var(--cancelled); } .st-deleted { --c: var(--blocked); }
+.sbadge { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 10px; border: 1px solid var(--c); color: var(--c); white-space: nowrap; }
+.phead .sbadge { margin-left: auto; }
+.pfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.stateform { position: relative; z-index: 1; margin: 0; }
+.stateform label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-bottom: 12px; }
+.searchbox { flex: 1 1 240px; max-width: 420px; }
+.searchbox input { width: 100%; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; border: 0; margin: 0; padding: 0; min-width: 0; }
+.chipf { cursor: pointer; }
+.chipf input { position: absolute; opacity: 0; pointer-events: none; }
+.chipf span { display: inline-block; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--raised); color: var(--muted); font-size: 12px; }
+.chipf input:checked + span { border-color: var(--c); color: var(--c); font-weight: 600; box-shadow: inset 0 0 0 1px var(--c); }
+.chipf input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.clear { font-size: 12px; }
+.count { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+.pstate { margin-bottom: 10px; }
+.pstate-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 0; padding: 8px 12px; background: var(--panel); border: 1px solid var(--p1); border-left-width: 4px; border-radius: 6px; }
+.banner span { flex: 1 1 260px; }
 
 /* board layout */
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; padding: 14px 16px; align-items: start; }

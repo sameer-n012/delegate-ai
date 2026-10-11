@@ -33,7 +33,7 @@ def env(tmp_path: Path) -> Env:
     root = tmp_path / "webproj"
     root.mkdir()
     svc = TaskService(connect(settings.db_path), "human")
-    project = svc.ensure_project(root, key="WEB")
+    project = svc.set_project_state(svc.ensure_project(root, key="WEB").id, "in_progress")
     svc.create_tasks(
         project.id,
         [
@@ -213,3 +213,140 @@ def test_event_stream_emits_and_stops(env: Env) -> None:
 
 def test_event_stream_route_unknown_project(client: TestClient) -> None:
     assert client.get("/p/NOPE/events/stream").status_code == 404
+
+
+# ---------------------------------------------------------------------- project state
+
+
+def _add_project(env: Env, tmp_path: Path, name: str, key: str, state: str) -> None:
+    root = tmp_path / name
+    root.mkdir()
+    svc = env.service("human")
+    project = svc.ensure_project(root, key=key)
+    svc.set_project_state(project.id, state)
+
+
+@pytest.fixture
+def many(env: Env, tmp_path: Path) -> Env:
+    _add_project(env, tmp_path, "payments-api", "PAY", "complete")
+    _add_project(env, tmp_path, "old-site", "OLD", "deleted")
+    return env
+
+
+def _cards(html: str) -> set[str]:
+    return {k for k in ("WEB", "PAY", "OLD") if f'id="pcard-{k}"' in html}
+
+
+def test_overview_hides_deleted_and_shows_state_badges(many: Env, client: TestClient) -> None:
+    html = client.get("/").text
+    assert _cards(html) == {"WEB", "PAY"}
+    assert "2 projects" in html
+    assert "sbadge st-complete" in html and "sbadge st-in_progress" in html
+
+
+def test_search_by_name_path_and_key_case_insensitive(many: Env, client: TestClient) -> None:
+    assert _cards(client.get("/?q=PAYMENTS").text) == {"PAY"}  # name
+    assert _cards(client.get("/?q=webproj").text) == {"WEB"}  # path fragment
+    assert _cards(client.get("/?q=pay").text) == {"PAY"}  # key and name
+    assert _cards(client.get("/?q=wEb").text) == {"WEB"}  # key
+    html = client.get("/?q=zzz").text
+    assert _cards(html) == set() and "0 projects" in html and "No projects match" in html
+
+
+def test_state_filter_and_explicit_deleted(many: Env, client: TestClient) -> None:
+    assert _cards(client.get("/?state=complete").text) == {"PAY"}
+    assert _cards(client.get("/?state=complete&state=in_progress").text) == {"WEB", "PAY"}
+    html = client.get("/?state=deleted").text
+    assert _cards(html) == {"OLD"} and "1 project<" in html
+    assert 'value="deleted" checked' in html  # the chip stays selected
+    assert _cards(client.get("/?q=old-site&state=in_progress").text) == set()
+
+
+def test_htmx_overview_returns_partial_only(many: Env, client: TestClient) -> None:
+    r = client.get("/?q=pay", headers=HX)
+    assert "<html" not in r.text and 'id="filters"' not in r.text
+    assert _cards(r.text) == {"PAY"} and "1 project" in r.text
+    assert r.headers["Vary"] == "HX-Request"
+    # history restore needs the whole page
+    full = client.get("/?q=pay", headers={**HX, "HX-History-Restore-Request": "true"})
+    assert "<html" in full.text
+
+
+def test_overview_invalid_state_is_400(client: TestClient) -> None:
+    assert client.get("/?state=bogus").status_code == 400
+
+
+def test_set_state_from_card(env: Env, client: TestClient) -> None:
+    r = client.post("/p/WEB/state", content="state=complete&view=card", headers={**FORM, **HX})
+    assert r.status_code == 200 and r.headers["HX-Trigger"] == "boardChanged"
+    assert 'id="pcard-WEB"' in r.text and "sbadge st-complete" in r.text
+    svc = env.service("human")
+    assert svc.get_project("WEB").state.value == "complete"
+    events = [e for e in svc.events_recent(project_id=env.project.id, limit=10)]
+    changed = [e for e in events if e.type == "project_state_changed"]
+    assert changed[0].payload == {"from": "in_progress", "to": "complete"}
+    assert changed[0].agent == "human"
+
+
+def test_set_state_from_board_and_restore_deleted(env: Env, client: TestClient) -> None:
+    r = client.post("/p/WEB/state", content="state=deleted&view=board", headers={**FORM, **HX})
+    assert 'id="pstate"' in r.text and "is deleted" in r.text
+    assert "WEB" not in [p["key"] for p in client.get("/api/projects").json()]
+    assert client.get("/p/WEB").status_code == 200  # still reachable
+    r = client.post("/p/WEB/state", content="state=in_progress&view=board", headers={**FORM, **HX})
+    assert 'class="banner"' not in r.text
+    assert "WEB" in [p["key"] for p in client.get("/api/projects").json()]
+
+
+def test_set_state_without_htmx_redirects(env: Env, client: TestClient) -> None:
+    r = client.post("/p/WEB/state", content="state=inactive&view=board", headers=FORM,
+                    follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/p/WEB"
+    r = client.post("/p/WEB/state", content="state=in_progress", headers=FORM,
+                    follow_redirects=False)
+    assert r.headers["location"] == "/"
+
+
+def test_set_state_invalid_is_400_toast(client: TestClient) -> None:
+    r = client.post("/p/WEB/state", content="state=nope", headers={**FORM, **HX})
+    assert r.status_code == 400 and "toast" in r.text
+    assert client.post("/p/NOPE/state", content="state=complete", headers=FORM).status_code == 404
+
+
+def test_banner_only_when_not_in_progress(env: Env, client: TestClient) -> None:
+    assert 'class="banner"' not in client.get("/p/WEB").text
+    env.service("human").set_project_state("WEB", "complete")
+    html = client.get("/p/WEB").text
+    assert 'class="banner"' in html and "This project is complete" in html
+    assert "Set in progress" in html
+    assert "Design &lt;b&gt;schema&lt;/b&gt;" in html  # the board still renders tasks
+
+
+def test_project_state_event_text(env: Env, client: TestClient) -> None:
+    env.service("human").set_project_state("WEB", "complete")
+    assert "project → complete" in client.get("/p/WEB/side").text
+
+
+def test_api_projects_filters(many: Env, client: TestClient) -> None:
+    def keys(params: dict[str, str | list[str]]) -> set[str]:
+        return {p["key"] for p in client.get("/api/projects", params=params).json()}
+
+    assert keys({}) == {"WEB", "PAY"}
+    assert keys({"q": "pay"}) == {"PAY"}
+    assert keys({"state": "deleted"}) == {"OLD"}
+    assert keys({"state": ["deleted", "complete"]}) == {"OLD", "PAY"}
+    assert keys({"q": "web", "state": "complete"}) == set()
+    r = client.get("/api/projects", params={"state": "bogus"})
+    assert r.status_code == 400 and r.json()["error"] == "invalid"
+
+
+def test_agent_blocked_error_maps_to_409(env: Env, client: TestClient) -> None:
+    from delegate.core import ProjectClosedError
+
+    env.service("human").set_project_state("WEB", "complete")
+    agent = env.service("claude#a1")
+    with pytest.raises(ProjectClosedError):
+        agent.add_note(env.project.id, "WEB-1", "progress", "x")
+    # the dashboard acts as human, so its own edits still work
+    r = client.post("/p/WEB/t/WEB-3/status", content="status=review", headers={**FORM, **HX})
+    assert r.status_code == 200

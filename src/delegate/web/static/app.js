@@ -37,6 +37,20 @@
     if (location.pathname === boardUrl()) openDrawer(false);
   });
 
+  // Ask before a project is deleted. A static hx-confirm would also ask for the other states.
+  document.body.addEventListener("htmx:confirm", function (e) {
+    var form = e.detail.elt;
+    if (!form.classList || !form.classList.contains("stateform")) return;
+    var pick = form.elements.state;
+    if (!pick || pick.value !== "deleted" || form.dataset.current === "deleted") return;
+    e.preventDefault();
+    if (window.confirm("Delete this project? It is hidden from the project list but can be restored.")) {
+      e.detail.issueRequest(true);
+    } else {
+      pick.value = form.dataset.current; // put the picker back
+    }
+  });
+
   // htmx drops 4xx bodies by default. Our error handler returns a toast fragment, so allow the swap.
   document.body.addEventListener("htmx:beforeSwap", function (e) {
     var s = e.detail.xhr.status;

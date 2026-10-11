@@ -1,0 +1,11 @@
+<p class="count" id="project-count">{{ cards|length }} {{ 'project' if cards|length == 1 else 'projects' }}</p>
+{% if not cards %}
+  {% if q or selected %}
+  <p class="empty">No projects match these filters. <a href="/">Clear filters</a></p>
+  {% else %}
+  <p class="empty">No projects yet. Run <code>delegate init</code> inside a repository to register one.</p>
+  {% endif %}
+{% endif %}
+<div class="project-grid">
+  {% for c in cards %}{% include "_project_card.html" %}{% endfor %}
+</div>

@@ -3,26 +3,20 @@
 {% block body %}
 <main class="page">
   <h1>Projects</h1>
-  {% if not cards %}
-  <p class="empty">No projects yet. Run <code>delegate init</code> inside a repository to register one.</p>
-  {% endif %}
-  <div class="project-grid">
-    {% for c in cards %}
-    <a class="pcard" href="/p/{{ c.project.key }}">
-      <div class="phead">
-        <span class="pkey">{{ c.project.key }}</span>
-        <span class="pname">{{ c.project.name }}</span>
-        <span class="agents{% if c.agents %} live{% endif %}" title="Agents active in the last 30 minutes">
-          <i class="dot"></i>{{ c.agents }} active {{ 'agent' if c.agents == 1 else 'agents' }}</span>
-      </div>
-      <div class="proot">{{ c.project.root_path }}</div>
-      <ul class="counts">
-        {% for s in ['todo','in_progress','review','blocked','done'] %}
-        <li class="s-{{ s }}{% if not c.counts.get(s) %} zero{% endif %}"><b>{{ c.counts.get(s, 0) }}</b> {{ COLUMN_LABELS[s] }}</li>
-        {% endfor %}
-      </ul>
-    </a>
-    {% endfor %}
-  </div>
+  <form class="filters" id="filters" method="get" action="/" role="search"
+        hx-get="/" hx-target="#projects" hx-swap="innerHTML" hx-push-url="true" hx-sync="this:replace"
+        hx-trigger="input delay:250ms from:#q, change from:#state-chips, submit">
+    <label class="searchbox"><span class="sr">Search projects by name, path or key</span>
+      <input id="q" type="search" name="q" value="{{ q }}" placeholder="Search name, path or key" autocomplete="off"></label>
+    <fieldset id="state-chips" class="chips">
+      <legend class="sr">Show projects in these states</legend>
+      {% for s in PROJECT_STATES %}
+      <label class="chipf st-{{ s }}"><input type="checkbox" name="state" value="{{ s }}"{% if s in selected %} checked{% endif %}><span>{{ STATE_LABELS[s] }}</span></label>
+      {% endfor %}
+    </fieldset>
+    <noscript><button type="submit" class="primary">Filter</button></noscript>
+    <a class="clear" href="/">Clear</a>
+  </form>
+  <div id="projects" aria-live="polite">{% include "_projects.html" %}</div>
 </main>
 {% endblock %}

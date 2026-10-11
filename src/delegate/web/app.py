@@ -15,7 +15,13 @@ from urllib.parse import parse_qs
 import anyio
 import uvicorn
 from fastapi import Depends, FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.concurrency import run_in_threadpool
@@ -25,6 +31,8 @@ from delegate.core import (
     ConflictError,
     CycleError,
     DelegateError,
+    ForbiddenError,
+    IdentityRequiredError,
     InvalidTransitionError,
     LinkKind,
     NewTask,
@@ -32,6 +40,8 @@ from delegate.core import (
     NotHolderError,
     NoteKind,
     Project,
+    ProjectClosedError,
+    ProjectState,
     Settings,
     Status,
     TaskService,
@@ -47,12 +57,15 @@ POLL_SECONDS = 1.0
 PING_SECONDS = 15.0
 
 STATUS_FOR_ERROR: tuple[tuple[type[DelegateError], int], ...] = (
+    (IdentityRequiredError, 401),
+    (ForbiddenError, 403),
     (NotFoundError, 404),
     (ValidationError, 400),
     (CycleError, 400),
     (InvalidTransitionError, 400),
     (ConflictError, 409),
     (NotHolderError, 409),
+    (ProjectClosedError, 409),
 )
 
 
@@ -90,6 +103,17 @@ Svc = Annotated[TaskService, Depends(get_service)]
 Form = Annotated[dict[str, str], Depends(get_form)]
 
 
+def _parse_states(values: list[str] | None) -> list[ProjectState] | None:
+    """Turn ``?state=`` values into enums. None (no values) means the default listing."""
+    if not values:
+        return None
+    try:
+        return [ProjectState(v) for v in values]
+    except ValueError as exc:
+        allowed = ", ".join(s.value for s in ProjectState)
+        raise ValidationError(f"Invalid project state in {values!r}; use one of {allowed}") from exc
+
+
 def _project(svc: TaskService, key: str) -> Project:
     return svc.get_project(key.upper())
 
@@ -105,6 +129,9 @@ def _make_templates() -> Jinja2Templates:
     globals_: dict[str, Any] = {
         "COLUMN_LABELS": views.COLUMN_LABELS,
         "STATUSES": [s.value for s in Status],
+        "STATE_LABELS": views.STATE_LABELS,
+        "STATE_BANNERS": views.STATE_BANNERS,
+        "PROJECT_STATES": [s.value for s in ProjectState],
         "NOTE_KINDS": [k.value for k in NoteKind if k is not NoteKind.SUMMARY],
         "LINK_KINDS": [k.value for k in LinkKind],
     }
@@ -211,8 +238,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ---- pages
 
     @app.get("/", response_class=HTMLResponse)
-    def overview(request: Request, svc: Svc) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
-        return render(request, "overview.html", svc, cards=views.project_cards(svc), project=None)
+    def overview(  # pyright: ignore[reportUnusedFunction]
+        request: Request,
+        svc: Svc,
+        q: str = "",
+        state: Annotated[list[str] | None, Query()] = None,
+    ) -> HTMLResponse:
+        states = _parse_states(state)
+        cards = views.project_cards(svc, states, q)
+        # htmx history restore asks for the full page, so it must not get the partial.
+        partial = _is_htmx(request) and request.headers.get("HX-History-Restore-Request") != "true"
+        return render(
+            request,
+            "_projects.html" if partial else "overview.html",
+            svc,
+            headers={"Vary": "HX-Request"},  # same URL, two bodies: keep caches apart
+            cards=cards,
+            project=None,
+            q=q.strip(),
+            selected=[s.value for s in states or []],
+        )
 
     def board_ctx(svc: TaskService, key: str, show_cancelled: bool) -> dict[str, Any]:
         project = _project(svc, key)
@@ -267,6 +312,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/p/{key}/t/{ref}", response_class=HTMLResponse)
     def task_page(request: Request, key: str, ref: str, svc: Svc) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
         return drawer_response(request, svc, key, ref, full_page=not _is_htmx(request))
+
+    @app.post("/p/{key}/state", response_class=HTMLResponse)
+    def set_state(request: Request, key: str, svc: Svc, form: Form) -> Response:  # pyright: ignore[reportUnusedFunction]
+        project = svc.set_project_state(_project(svc, key).id, form.get("state", ""))
+        on_board = form.get("view") == "board"
+        if not _is_htmx(request):  # plain form post: go back to where the form was
+            return RedirectResponse(f"/p/{project.key}" if on_board else "/", status_code=303)
+        headers = {"HX-Trigger": "boardChanged"}
+        if on_board:
+            return render(request, "_pstate.html", svc, headers=headers, project=project)
+        card = views.project_card(svc, project)
+        return render(request, "_project_card.html", svc, headers=headers, c=card)
 
     # ---- human actions (each re-renders the drawer and asks the board to refresh)
 
@@ -362,8 +419,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # ---- JSON API
 
     @app.get("/api/projects")
-    def api_projects(svc: Svc) -> list[dict[str, Any]]:  # pyright: ignore[reportUnusedFunction]
-        return [p.model_dump(mode="json") for p in svc.list_projects()]
+    def api_projects(  # pyright: ignore[reportUnusedFunction]
+        svc: Svc, q: str | None = None, state: Annotated[list[str] | None, Query()] = None
+    ) -> list[dict[str, Any]]:
+        projects = svc.list_projects(states=_parse_states(state), query=q)
+        return [p.model_dump(mode="json") for p in projects]
 
     @app.get("/api/p/{key}/status")
     def api_status(key: str, svc: Svc) -> dict[str, Any]:  # pyright: ignore[reportUnusedFunction]

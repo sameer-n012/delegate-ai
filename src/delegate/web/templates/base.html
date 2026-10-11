@@ -20,6 +20,9 @@
       {% for p in projects %}
       <option value="{{ p.key }}"{% if project and project.key == p.key %} selected{% endif %}>{{ p.key }} {{ p.name }}</option>
       {% endfor %}
+      {% if project and project.key not in projects|map(attribute='key') %}
+      <option value="{{ project.key }}" selected>{{ project.key }} {{ project.name }}</option>
+      {% endif %}
     </select>
   </label>
   <span class="grow"></span>

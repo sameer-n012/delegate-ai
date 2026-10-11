@@ -11,6 +11,7 @@
       <h1><span class="pkey">{{ project.key }}</span> {{ project.name }}</h1>
       <span class="proot">{{ project.root_path }}</span>
     </div>
+    {% include "_pstate.html" %}
     <div id="newtask">{% include "_new_task.html" %}</div>
     <div id="board" class="board-wrap"
          hx-get="/p/{{ project.key }}/board{% if show_cancelled %}?show_cancelled=1{% endif %}"

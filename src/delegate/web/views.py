@@ -4,9 +4,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from collections.abc import Sequence
 from typing import cast
 
-from delegate.core import Agent, Event, Project, Status, TaskService, TaskSummary
+from delegate.core import (
+    Agent,
+    Event,
+    Project,
+    ProjectState,
+    Status,
+    TaskService,
+    TaskSummary,
+)
 
 ACTIVE_AGENT_MINUTES = 30
 DONE_LIMIT = 20
@@ -25,6 +34,20 @@ COLUMN_LABELS: dict[str, str] = {
     "blocked": "Blocked",
     "done": "Done",
     "cancelled": "Cancelled",
+}
+STATE_LABELS: dict[str, str] = {
+    "not_started": "Not started",
+    "in_progress": "In progress",
+    "complete": "Complete",
+    "inactive": "Inactive",
+    "deleted": "Deleted",
+}
+# What the board banner says when agents are locked out. Keys are non-in_progress states.
+STATE_BANNERS: dict[str, str] = {
+    "not_started": "This project has not been started",
+    "complete": "This project is complete",
+    "inactive": "This project is inactive",
+    "deleted": "This project is deleted and hidden from the project list",
 }
 
 
@@ -83,6 +106,9 @@ def describe_event(event: Event) -> str:
             return "registered"
         case "project_created":
             return "project created"
+        case "project_state_changed":
+            target = str(p.get("to", "?")).replace("_", " ")
+            return f"project \u2192 {target}"
         case other:
             return f"{other} {ref}".strip()
 
@@ -145,10 +171,16 @@ class ProjectCard:
     open_total: int
 
 
-def project_cards(svc: TaskService) -> list[ProjectCard]:
-    cards: list[ProjectCard] = []
-    for project in svc.list_projects():
-        counts = svc.project_status(project.id).counts
-        open_total = sum(n for s, n in counts.items() if s not in ("done", "cancelled"))
-        cards.append(ProjectCard(project, counts, len(active_agents(svc, project)), open_total))
-    return cards
+def project_card(svc: TaskService, project: Project) -> ProjectCard:
+    counts = svc.project_status(project.id).counts
+    open_total = sum(n for s, n in counts.items() if s not in ("done", "cancelled"))
+    return ProjectCard(project, counts, len(active_agents(svc, project)), open_total)
+
+
+def project_cards(
+    svc: TaskService,
+    states: Sequence[ProjectState] | None = None,
+    query: str | None = None,
+) -> list[ProjectCard]:
+    """Cards for the home page. ``states=None`` hides deleted projects (core rule)."""
+    return [project_card(svc, p) for p in svc.list_projects(states=states, query=query)]

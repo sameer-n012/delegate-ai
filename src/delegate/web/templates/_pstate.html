@@ -1,0 +1,13 @@
+{% import "_macros.html" as m %}
+<div id="pstate" class="pstate">
+  <div class="pstate-row">{{ m.state_badge(project) }}{{ m.state_form(project, "board", "#pstate") }}</div>
+  {% if project.state.value != 'in_progress' %}
+  <form class="banner" role="status" method="post" action="/p/{{ project.key }}/state"
+        hx-post="/p/{{ project.key }}/state" hx-target="#pstate" hx-swap="outerHTML">
+    <input type="hidden" name="view" value="board">
+    <input type="hidden" name="state" value="in_progress">
+    <span>{{ STATE_BANNERS[project.state.value] }} &mdash; agents can't change its tasks.</span>
+    <button class="primary" type="submit">Set in progress</button>
+  </form>
+  {% endif %}
+</div>
