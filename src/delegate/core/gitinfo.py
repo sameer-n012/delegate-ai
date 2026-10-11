@@ -18,7 +18,7 @@ class RepoInfo:
     branch: str | None
 
 
-def _git(cwd: Path, *args: str) -> str | None:
+def run_git(cwd: Path, *args: str) -> str | None:
     """Run git and return stripped stdout, or None if git fails or is missing."""
     try:
         result = subprocess.run(
@@ -52,7 +52,7 @@ def normalize_remote(url: str) -> str:
 def detect(cwd: Path) -> RepoInfo:
     """Return repo info for ``cwd``. Outside git, the directory itself is the root."""
     cwd = cwd.resolve()
-    common = _git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    common = run_git(cwd, "rev-parse", "--path-format=absolute", "--git-common-dir")
     if common is None:
         return RepoInfo(root=cwd, name=cwd.name, remote=None, branch=None)
     common_path = Path(common)
@@ -61,10 +61,10 @@ def detect(cwd: Path) -> RepoInfo:
     if common_path.name == ".git":
         root = common_path.parent
     else:
-        toplevel = _git(cwd, "rev-parse", "--show-toplevel")
+        toplevel = run_git(cwd, "rev-parse", "--show-toplevel")
         root = Path(toplevel) if toplevel else cwd
-    remote = _git(cwd, "config", "--get", "remote.origin.url")
-    branch = _git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
+    remote = run_git(cwd, "config", "--get", "remote.origin.url")
+    branch = run_git(cwd, "rev-parse", "--abbrev-ref", "HEAD")
     return RepoInfo(
         root=root.resolve(),
         name=root.name,
