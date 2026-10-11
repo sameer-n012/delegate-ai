@@ -1,0 +1,39 @@
+[project]
+name = "delegate"
+version = "0.1.0"
+description = "Task and project tracker for coding agents (MCP server, CLI, web dashboard)"
+authors = [
+    { name = "sameer-n012", email = "sameer.narendran@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "jinja2>=3.1.6",
+    "mcp>=2.3,<3",
+    "pydantic>=2.14.0",
+    "typer>=0.27.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+delegate = "delegate.cli.main:app"
+
+[build-system]
+requires = ["uv_build>=0.12.18,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.414",
+    "pytest>=9.1.1",
+]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
