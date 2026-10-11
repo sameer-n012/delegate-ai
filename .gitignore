@@ -1,12 +1,6 @@
 CLAUDE.md
-<<<<<<< HEAD
-.claude
-.mcp.json
-||||||| parent of 8b0ddf3 (Updared gitignore)
-=======
 .claude/
 .mcp.json
->>>>>>> 8b0ddf3 (Updared gitignore)
 
 # Python / uv
 .venv/
