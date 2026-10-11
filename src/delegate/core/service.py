@@ -284,7 +284,7 @@ class TaskService:
     def list_projects(
         self, *, states: Sequence[ProjectState] | None = None, query: str | None = None
     ) -> list[Project]:
-        """List projects. Without ``states``, deleted projects are hidden.
+        """List projects. Without ``states`` (None or empty), deleted projects are hidden.
 
         ``query`` matches name, root path, or key (case-insensitive substring).
         """
@@ -296,8 +296,10 @@ class TaskService:
         else:
             where.append("state != 'deleted'")
         if query and query.strip():
-            like = f"%{query.strip()}%"
-            where.append("(name LIKE ? OR root_path LIKE ? OR key LIKE ?)")
+            like = f"%{_escape_like(query.strip())}%"
+            where.append(
+                "(name LIKE ? ESCAPE '\\' OR root_path LIKE ? ESCAPE '\\' OR key LIKE ? ESCAPE '\\')"
+            )
             params.extend([like, like, like])
         sql = "SELECT * FROM projects WHERE " + " AND ".join(where) + " ORDER BY name"
         return [_project(r) for r in self.conn.execute(sql, params)]
@@ -482,8 +484,8 @@ class TaskService:
             where.append("t.parent_id = ?")
             params.append(self._row(parent, project_id)["id"])
         if query:
-            where.append("(t.title LIKE ? OR t.description LIKE ?)")
-            like = f"%{query}%"
+            where.append("(t.title LIKE ? ESCAPE '\\' OR t.description LIKE ? ESCAPE '\\')")
+            like = f"%{_escape_like(query)}%"
             params.extend([like, like])
         sql = _TASK_SELECT + " WHERE " + " AND ".join(where)
         if ready_only:
@@ -1032,6 +1034,11 @@ class _WriteTxn:
 
 
 # ---------------------------------------------------------------------- row mappers
+
+
+def _escape_like(text: str) -> str:
+    """Escape LIKE wildcards so user search text matches literally (use with ESCAPE '\\')."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def _looks_like_ref(value: str) -> bool:

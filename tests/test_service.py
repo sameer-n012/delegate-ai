@@ -341,6 +341,15 @@ def test_list_projects_filter_and_search(make_service: ServiceFactory, tmp_path:
     assert names(
         human.list_projects(states=[ProjectState.NOT_STARTED, ProjectState.IN_PROGRESS], query="a")
     ) == ["alpha-web", "beta-api"]
+    # LIKE wildcards in user input match literally.
+    assert names(human.list_projects(query="alpha_web")) == []
+    assert names(human.list_projects(query="%")) == []
+
+
+def test_task_query_escapes_wildcards(make_service: ServiceFactory, project: Project) -> None:
+    human = make_service("human")
+    human.create_tasks(project.id, [NewTask(title="100% coverage"), NewTask(title="1000 items")])
+    assert [t.title for t in human.list_tasks(project.id, query="100%")] == ["100% coverage"]
 
 
 def test_events_since(make_service: ServiceFactory, project: Project) -> None:
