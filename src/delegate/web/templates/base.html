@@ -1,0 +1,31 @@
+{% import "_macros.html" as m %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}delegate{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body{% if project %} data-project="{{ project.key }}"{% endif %}>
+<header class="top">
+  <a class="brand" href="/">delegate</a>
+  <label class="switch">
+    <span class="sr">Project</span>
+    <select id="project-switch" aria-label="Switch project">
+      <option value="">All projects</option>
+      {% for p in projects %}
+      <option value="{{ p.key }}"{% if project and project.key == p.key %} selected{% endif %}>{{ p.key }} {{ p.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <span class="grow"></span>
+  {% block header_extra %}{% endblock %}
+</header>
+{% block body %}{% endblock %}
+<div id="toasts" aria-live="polite"></div>
+</body>
+</html>

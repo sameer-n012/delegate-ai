@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}{{ project.key }} - delegate{% endblock %}
+{% block header_extra %}
+<span id="live" class="live-ind" title="Live updates"><i class="dot"></i><span>connecting</span></span>
+<label class="toggle"><input type="checkbox" id="show-cancelled"{% if show_cancelled %} checked{% endif %}> Cancelled</label>
+{% endblock %}
+{% block body %}
+<div class="layout" data-key="{{ project.key }}" data-stream="/p/{{ project.key }}/events/stream">
+  <main class="main">
+    <div class="titlebar">
+      <h1><span class="pkey">{{ project.key }}</span> {{ project.name }}</h1>
+      <span class="proot">{{ project.root_path }}</span>
+    </div>
+    <div id="newtask">{% include "_new_task.html" %}</div>
+    <div id="board" class="board-wrap"
+         hx-get="/p/{{ project.key }}/board{% if show_cancelled %}?show_cancelled=1{% endif %}"
+         hx-trigger="boardChanged from:body, every 30s" hx-swap="innerHTML">
+      {% include "_board.html" %}
+    </div>
+  </main>
+  <aside id="side" class="side"
+         hx-get="/p/{{ project.key }}/side" hx-trigger="boardChanged from:body, every 30s" hx-swap="innerHTML">
+    {% include "_side.html" %}
+  </aside>
+</div>
+<aside id="drawer" class="drawer"{% if drawer %} data-open="true" data-ref="{{ drawer.task.ref }}"{% endif %} aria-label="Task detail">
+  <button class="close" id="drawer-close" aria-label="Close task detail">Close</button>
+  <div id="drawer-body">{% if drawer %}{% with d = drawer %}{% include "_drawer.html" %}{% endwith %}{% endif %}</div>
+</aside>
+{% endblock %}

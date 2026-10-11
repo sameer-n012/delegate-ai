@@ -1,0 +1,13 @@
+<details class="newtask">
+  <summary>New task</summary>
+  <form hx-post="/p/{{ project.key }}/tasks" hx-target="#newtask" hx-swap="innerHTML">
+    <label class="f-title">Title <input name="title" required maxlength="300" autocomplete="off"></label>
+    <label class="f-desc">Description <textarea name="description" rows="3"></textarea></label>
+    <label>Priority
+      <select name="priority">{% for p in ['P0','P1','P2','P3'] %}<option{% if p == 'P2' %} selected{% endif %}>{{ p }}</option>{% endfor %}</select></label>
+    <label>Parent <input name="parent" placeholder="{{ project.key }}-1" autocomplete="off"></label>
+    <label>Depends on <input name="depends_on" placeholder="{{ project.key }}-2, {{ project.key }}-3" autocomplete="off"></label>
+    <button type="submit" class="primary">Create task</button>
+  </form>
+</details>
+{% if created %}<p class="created" role="status">Created {{ created }}.</p>{% endif %}

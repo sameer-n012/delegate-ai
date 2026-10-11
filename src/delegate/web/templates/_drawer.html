@@ -1,0 +1,91 @@
+{% import "_macros.html" as m %}
+{% set t = d.task %}
+{% set key = project.key %}
+{% set base = "/p/" ~ key ~ "/t/" ~ t.ref %}
+<article class="detail" data-ref="{{ t.ref }}" data-url="{{ base }}">
+  <header>
+    <div class="row1"><b class="ref">{{ t.ref }}</b>{{ m.status_pill(t.status) }}{{ m.prio(t.priority) }}{{ m.who(t.assignee) }}
+      {% if t.status.value == 'todo' %}{% if d.ready %}<span class="mark ready">ready</span>{% else %}<span class="mark wait">waiting on deps</span>{% endif %}{% endif %}</div>
+    <h2>{{ t.title }}</h2>
+    <div class="meta">Created {{ t.created_at|ago(now) }} by {{ t.created_by }}. Updated {{ t.updated_at|ago(now) }}.
+      {% if t.parent %}Parent <a href="/p/{{ key }}/t/{{ t.parent }}" hx-get="/p/{{ key }}/t/{{ t.parent }}" hx-target="#drawer-body" hx-push-url="true">{{ t.parent }}</a>.{% endif %}
+      {% if t.lease_expires_at %}Lease ends {{ t.lease_expires_at }}.{% endif %}</div>
+  </header>
+
+  <div class="actions">
+    <label>Status
+      <select name="status" hx-post="{{ base }}/status" hx-target="#drawer-body" hx-trigger="change">
+        {% for s in STATUSES %}<option value="{{ s }}"{% if s == t.status.value %} selected{% endif %}>{{ COLUMN_LABELS[s] }}</option>{% endfor %}
+      </select></label>
+    <label>Priority
+      <select name="priority" hx-post="{{ base }}/priority" hx-target="#drawer-body" hx-trigger="change">
+        {% for p in ['P0','P1','P2','P3'] %}<option{% if p == 'P' ~ t.priority.value %} selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select></label>
+  </div>
+
+  <section>
+    <h3>Description</h3>
+    {% if t.description %}<p class="prose">{{ t.description }}</p>{% else %}<p class="none">No description.</p>{% endif %}
+  </section>
+  <section>
+    <h3>Acceptance</h3>
+    {% if t.acceptance %}<p class="prose">{{ t.acceptance }}</p>{% else %}<p class="none">No acceptance criteria.</p>{% endif %}
+  </section>
+
+  <details class="edit">
+    <summary>Edit title, description, acceptance</summary>
+    <form hx-post="{{ base }}/edit" hx-target="#drawer-body">
+      <input type="hidden" name="version" value="{{ t.version }}">
+      <label>Title <input name="title" value="{{ t.title }}" required maxlength="300"></label>
+      <label>Description <textarea name="description" rows="4">{{ t.description }}</textarea></label>
+      <label>Acceptance <textarea name="acceptance" rows="3">{{ t.acceptance }}</textarea></label>
+      <button class="primary" type="submit">Save changes</button>
+    </form>
+  </details>
+
+  {% if d.depends_on %}
+  <section><h3>Depends on</h3><ul class="rel">
+    {% for r in d.depends_on %}<li>{{ m.status_pill(r.status) }}{{ m.task_link(key, r) }}</li>{% endfor %}
+  </ul></section>
+  {% endif %}
+  {% if d.dependents %}
+  <section><h3>Blocking</h3><ul class="rel">
+    {% for r in d.dependents %}<li>{{ m.status_pill(r.status) }}{{ m.task_link(key, r) }}</li>{% endfor %}
+  </ul></section>
+  {% endif %}
+  {% if d.children %}
+  <section><h3>Subtasks</h3><ul class="rel">
+    {% for r in d.children %}<li>{{ m.status_pill(r.status) }}{{ m.task_link(key, r) }}</li>{% endfor %}
+  </ul></section>
+  {% endif %}
+
+  <section>
+    <h3>Links</h3>
+    {% if d.links %}<ul class="links">
+      {% for l in d.links %}<li><span class="kind">{{ l.kind.value }}</span>
+        {% if l.kind.value in ('url', 'pr') and (l.ref.startswith('http://') or l.ref.startswith('https://')) %}<a href="{{ l.ref }}" target="_blank" rel="noopener noreferrer">{{ l.ref }}</a>{% else %}<code>{{ l.ref }}</code>{% endif %}</li>{% endfor %}
+    </ul>{% else %}<p class="none">No links.</p>{% endif %}
+    <form class="inline" hx-post="{{ base }}/link" hx-target="#drawer-body">
+      <select name="kind" aria-label="Link kind">{% for k in LINK_KINDS %}<option>{{ k }}</option>{% endfor %}</select>
+      <input name="ref" placeholder="commit hash, PR url, file path" required aria-label="Link target">
+      <button type="submit">Add link</button>
+    </form>
+  </section>
+
+  <section>
+    <h3>Notes <span class="n">{{ d.notes|length }}</span></h3>
+    <ol class="notes">
+      {% for n in d.notes %}
+      <li class="note k-{{ n.kind.value }}">
+        <div class="nh"><b>{{ n.author }}</b><span class="kindbadge">{{ n.kind.value }}</span><span class="when" title="{{ n.created_at }}">{{ n.created_at|ago(now) }}</span></div>
+        <p class="prose">{{ n.body }}</p>
+      </li>
+      {% else %}<li class="none">No notes yet.</li>{% endfor %}
+    </ol>
+    <form class="notef" hx-post="{{ base }}/note" hx-target="#drawer-body">
+      <select name="kind" aria-label="Note kind">{% for k in NOTE_KINDS %}<option>{{ k }}</option>{% endfor %}</select>
+      <textarea name="body" rows="3" required placeholder="Add a note for the agents or for later"></textarea>
+      <button class="primary" type="submit">Add note</button>
+    </form>
+  </section>
+</article>

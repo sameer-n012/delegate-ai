@@ -1,0 +1,22 @@
+{% import "_macros.html" as m %}
+<div class="columns">
+  {% for col in columns %}
+  <section class="col s-{{ col.status.value }}" aria-label="{{ col.label }}">
+    <h2>{{ col.label }} <span class="n">{{ col.tasks|length }}</span>{% if col.truncated %}<span class="note">latest {{ col.tasks|length }}</span>{% endif %}</h2>
+    <div class="cards">
+      {% for t in col.tasks %}
+      <a class="card s-{{ t.status.value }}" href="/p/{{ project.key }}/t/{{ t.ref }}"
+         hx-get="/p/{{ project.key }}/t/{{ t.ref }}" hx-target="#drawer-body" hx-push-url="true" data-ref="{{ t.ref }}">
+        <div class="row1"><b class="ref">{{ t.ref }}</b>{{ m.prio(t.priority) }}
+          {% if t.status.value == 'todo' %}{% if t.ready %}<span class="mark ready">ready</span>{% else %}<span class="mark wait">waiting on deps</span>{% endif %}{% endif %}
+        </div>
+        <div class="title">{{ t.title }}</div>
+        <div class="row3">{{ m.who(t.assignee) }}{% if t.parent %}<span class="parent" title="Parent task">in {{ t.parent }}</span>{% endif %}</div>
+      </a>
+      {% else %}
+      <p class="none">Nothing here</p>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>

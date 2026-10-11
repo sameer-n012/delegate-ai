@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Projects - delegate{% endblock %}
+{% block body %}
+<main class="page">
+  <h1>Projects</h1>
+  {% if not cards %}
+  <p class="empty">No projects yet. Run <code>delegate init</code> inside a repository to register one.</p>
+  {% endif %}
+  <div class="project-grid">
+    {% for c in cards %}
+    <a class="pcard" href="/p/{{ c.project.key }}">
+      <div class="phead">
+        <span class="pkey">{{ c.project.key }}</span>
+        <span class="pname">{{ c.project.name }}</span>
+        <span class="agents{% if c.agents %} live{% endif %}" title="Agents active in the last 30 minutes">
+          <i class="dot"></i>{{ c.agents }} active {{ 'agent' if c.agents == 1 else 'agents' }}</span>
+      </div>
+      <div class="proot">{{ c.project.root_path }}</div>
+      <ul class="counts">
+        {% for s in ['todo','in_progress','review','blocked','done'] %}
+        <li class="s-{{ s }}{% if not c.counts.get(s) %} zero{% endif %}"><b>{{ c.counts.get(s, 0) }}</b> {{ COLUMN_LABELS[s] }}</li>
+        {% endfor %}
+      </ul>
+    </a>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

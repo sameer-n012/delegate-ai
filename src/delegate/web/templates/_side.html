@@ -1,0 +1,26 @@
+<section class="panel">
+  <h2>Agents <span class="n">{{ agents|length }}</span></h2>
+  {% for a in agents %}
+  <div class="agent">
+    <div class="arow"><span class="dot live"></span><b>{{ a.agent.id }}</b><span class="when">{{ a.agent.last_heartbeat|ago(now) }}</span></div>
+    {% for t in a.tasks %}
+    <a class="holds" href="/p/{{ project.key }}/t/{{ t.ref }}" hx-get="/p/{{ project.key }}/t/{{ t.ref }}" hx-target="#drawer-body" hx-push-url="true"><b>{{ t.ref }}</b> {{ t.title }}</a>
+    {% else %}
+    <span class="idle">idle</span>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="none">No agent has checked in during the last 30 minutes.</p>
+  {% endfor %}
+</section>
+<section class="panel">
+  <h2>Activity</h2>
+  <ol class="feed">
+    {% for e in events %}
+    <li><span class="when">{{ e.ts|ago(now) }}</span>
+      <span class="who">{{ e.agent or 'system' }}</span> {{ e|event_text }}</li>
+    {% else %}
+    <li class="none">No activity yet.</li>
+    {% endfor %}
+  </ol>
+</section>
