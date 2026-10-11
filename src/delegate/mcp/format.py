@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from delegate.core import ProjectStatus, Task, TaskDetail, TaskSummary
+from delegate.core import ProjectState, ProjectStatus, Task, TaskDetail, TaskSummary
 
 
 def summary_line(t: TaskSummary) -> str:
@@ -31,10 +31,16 @@ def _section(title: str, lines: Sequence[str]) -> list[str]:
 
 def project_status(status: ProjectStatus, agent_id: str) -> str:
     counts = " ".join(f"{k}={v}" for k, v in status.counts.items() if v)
+    project = status.project
     lines = [
-        f"Project {status.project.key} ({status.project.name}): {counts or 'no tasks'}",
+        f"Project {project.key} ({project.name}) [{project.state.value}]: {counts or 'no tasks'}",
         f"You are {agent_id}.",
     ]
+    if project.state != ProjectState.IN_PROGRESS:
+        lines.append(
+            f"This project is {project.state.value}: you cannot change its tasks until a "
+            "human sets it to in_progress. Ask the user."
+        )
     lines += _section("Ready", [summary_line(t) for t in status.ready])
     lines += _section(
         "Yours",

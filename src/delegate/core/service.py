@@ -10,6 +10,9 @@ Rules enforced here (adapters must not duplicate them):
   Only ready tasks can be claimed. ``claim_task()`` without a ref also skips
   tasks with open subtasks (epics), so agents pick up leaf work.
 * Dependencies and parents stay within one project and must not form cycles.
+* The ``anonymous`` actor (no identity given) can read but never write.
+* Agents may change tasks only in ``in_progress`` projects; only humans change
+  project state.
 * Every state change appends one row to ``events``.
 """
 
@@ -30,9 +33,12 @@ from delegate.core.db import transaction
 from delegate.core.errors import (
     ConflictError,
     CycleError,
+    ForbiddenError,
+    IdentityRequiredError,
     InvalidTransitionError,
     NotFoundError,
     NotHolderError,
+    ProjectClosedError,
     ValidationError,
 )
 from delegate.core.ids import derive_key, format_ref, parse_ref, validate_key
@@ -49,6 +55,7 @@ from delegate.core.models import (
     NoteKind,
     Priority,
     Project,
+    ProjectState,
     ProjectStatus,
     Status,
     Task,
@@ -274,9 +281,66 @@ class TaskService:
             raise NotFoundError(f"Project {key_or_id} not found")
         return _project(row)
 
-    def list_projects(self) -> list[Project]:
-        rows = self.conn.execute("SELECT * FROM projects ORDER BY name").fetchall()
-        return [_project(r) for r in rows]
+    def list_projects(
+        self, *, states: Sequence[ProjectState] | None = None, query: str | None = None
+    ) -> list[Project]:
+        """List projects. Without ``states``, deleted projects are hidden.
+
+        ``query`` matches name, root path, or key (case-insensitive substring).
+        """
+        where: list[str] = []
+        params: list[Any] = []
+        if states:
+            where.append(f"state IN ({','.join('?' * len(states))})")
+            params.extend(s.value for s in states)
+        else:
+            where.append("state != 'deleted'")
+        if query and query.strip():
+            like = f"%{query.strip()}%"
+            where.append("(name LIKE ? OR root_path LIKE ? OR key LIKE ?)")
+            params.extend([like, like, like])
+        sql = "SELECT * FROM projects WHERE " + " AND ".join(where) + " ORDER BY name"
+        return [_project(r) for r in self.conn.execute(sql, params)]
+
+    def set_project_state(self, key_or_id: str | int, state: ProjectState | str) -> Project:
+        """Change a project's lifecycle state. Humans only."""
+        if not self.actor.is_human:
+            raise ForbiddenError("Only a human can change a project's state (use --as human)")
+        try:
+            new_state = ProjectState(state)
+        except ValueError as exc:
+            raise ValidationError(
+                f"Invalid project state {state!r}; use one of "
+                f"{', '.join(s.value for s in ProjectState)}"
+            ) from exc
+        with self._write():
+            project = self.get_project(key_or_id)
+            if project.state == new_state:
+                return project
+            self.conn.execute(
+                "UPDATE projects SET state = ? WHERE id = ?", (new_state.value, project.id)
+            )
+            self._emit(
+                "project_state_changed",
+                project.id,
+                payload={"from": project.state.value, "to": new_state.value},
+            )
+            return self._project_by_id(project.id)
+
+    def _check_project_open(self, project_id: int) -> None:
+        """Agents may change tasks only in in_progress projects. Humans are exempt."""
+        if self.actor.is_human:
+            return
+        row = self.conn.execute(
+            "SELECT key, state FROM projects WHERE id = ?", (project_id,)
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"Project {project_id} not found")
+        if row["state"] != ProjectState.IN_PROGRESS:
+            raise ProjectClosedError(
+                f"Project {row['key']} is {row['state']}; a human must set it to "
+                "in_progress before agents can change its tasks"
+            )
 
     # ------------------------------------------------------------------ agents
 
@@ -290,8 +354,8 @@ class TaskService:
         project_id: int | None = None,
     ) -> Agent:
         """Create or refresh the agent row for the current actor."""
-        if self.actor.is_human:
-            raise ValidationError("The human actor is not an agent")
+        if self.actor.is_human or self.actor.is_anonymous:
+            raise ValidationError(f"The {self.actor.id} actor is not an agent")
         now = self._now()
         with transaction(self.conn):
             self.conn.execute(
@@ -530,6 +594,7 @@ class TaskService:
         created: list[int] = []
         with self._write():
             self._project_by_id(project_id)
+            self._check_project_open(project_id)
             for item in items:
                 if item.local_id is not None:
                     if _looks_like_ref(item.local_id):
@@ -607,6 +672,7 @@ class TaskService:
         with self._write():
             if ref is not None:
                 row = self._row(ref, project_id)
+                self._check_project_open(row["project_id"])
                 if row["status"] == Status.IN_PROGRESS:
                     if row["assignee"] == self.actor.id:
                         return _task(self._row_by_id(row["id"]))  # lease renewed by _touch
@@ -629,7 +695,8 @@ class TaskService:
                         f"{_ref(row)} is waiting on open dependencies: {', '.join(open_deps)}"
                     )
             else:
-                where = [f"t.project_id = ?", _NO_OPEN_CHILDREN]
+                self._check_project_open(project_id)
+                where = ["t.project_id = ?", _NO_OPEN_CHILDREN]
                 params: list[Any] = [project_id]
                 if parent is not None:
                     where.append("t.parent_id = ?")
@@ -675,6 +742,7 @@ class TaskService:
     ) -> Task:
         with self._write():
             row = self._row(ref, project_id)
+            self._check_project_open(row["project_id"])
             self._check_holder(row)
             self._check_version(row, expected_version)
             now = self._now()
@@ -785,6 +853,7 @@ class TaskService:
             raise ValidationError("Note body is empty")
         with self._write():
             row = self._row(ref, project_id)
+            self._check_project_open(row["project_id"])
             note_id = self._insert_note(row, note_kind, body)
             note = self.conn.execute("SELECT * FROM notes WHERE id = ?", (note_id,)).fetchone()
             return _note(note, _ref(row))
@@ -803,6 +872,7 @@ class TaskService:
     ) -> list[Link]:
         with self._write():
             row = self._row(ref, project_id)
+            self._check_project_open(row["project_id"])
             self._insert_links(row, links)
             rows = self.conn.execute(
                 "SELECT * FROM links WHERE task_id = ? ORDER BY id", (row["id"],)
@@ -847,6 +917,7 @@ class TaskService:
         target = Status.REVIEW if to_review else Status.DONE
         with self._write():
             row = self._row(ref, project_id)
+            self._check_project_open(row["project_id"])
             self._check_version(row, expected_version)
             if not self.actor.is_human:
                 if row["status"] != Status.IN_PROGRESS or row["assignee"] != self.actor.id:
@@ -876,6 +947,7 @@ class TaskService:
             raise ValidationError("A release reason is required (it becomes a handoff note)")
         with self._write():
             row = self._row(ref, project_id)
+            self._check_project_open(row["project_id"])
             if row["status"] != Status.IN_PROGRESS:
                 raise InvalidTransitionError(f"{_ref(row)} is {row['status']}, not in_progress")
             self._check_holder(row)
@@ -941,6 +1013,11 @@ class _WriteTxn:
         self._cm = transaction(service.conn)
 
     def __enter__(self) -> sqlite3.Connection:
+        if self._service.actor.is_anonymous:
+            raise IdentityRequiredError(
+                "No identity: set DELEGATE_AGENT (e.g. codex#7f2a) or pass --as. "
+                "People use --as human."
+            )
         conn = self._cm.__enter__()
         try:
             self._service._reap()  # pyright: ignore[reportPrivateUsage]
@@ -980,6 +1057,7 @@ def _project(row: sqlite3.Row) -> Project:
         name=row["name"],
         root_path=row["root_path"],
         git_remote=row["git_remote"],
+        state=ProjectState(row["state"]),
         created_at=row["created_at"],
     )
 

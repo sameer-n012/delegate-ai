@@ -19,11 +19,14 @@ def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Isolated DB and a project directory (no git: the path is the identity)."""
     monkeypatch.setenv("DELEGATE_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("DELEGATE_DB", str(tmp_path / "delegate.db"))
-    monkeypatch.delenv("DELEGATE_AGENT", raising=False)
+    # Tests act as an explicit human by default (there is no implicit human any more)
+    # and start the project, since new projects are not_started.
+    monkeypatch.setenv("DELEGATE_AGENT", "human")
     monkeypatch.delenv("DELEGATE_PROJECT", raising=False)
     proj = tmp_path / "demo-app"
     proj.mkdir()
     monkeypatch.chdir(proj)
+    run("project", "state", "in_progress")
     return proj
 
 
@@ -195,3 +198,33 @@ def test_project_option_and_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
     monkeypatch.setenv("DELEGATE_PROJECT", key)
     assert "In first project" in run("list").stdout
     run("--project", "NOPE", "list", code=1)
+
+
+def test_no_identity_reads_ok_writes_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    run("add", "x")
+    monkeypatch.delenv("DELEGATE_AGENT")
+    assert "x" in run("list").stdout
+    assert run_json("whoami")["actor"] == "anonymous"
+    out = run("--json", "note", "1", "hi", code=1).stdout
+    assert json.loads(out)["error"] == "no_identity"
+    run("--json", "claim", code=1)
+
+
+def test_project_state_and_projects_filter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    run("add", "x")
+    assert run_json("project", "state")["state"] == "in_progress"
+    # Agents cannot change project state, and cannot work once it is closed.
+    assert json.loads(run("--json", "--as", "codex#1", "project", "state", "complete", code=1).stdout)["error"] == "forbidden"
+    run("project", "state", "complete")
+    err = json.loads(run("--json", "--as", "codex#1", "claim", code=1).stdout)
+    assert err["error"] == "project_not_in_progress"
+    assert "Project is complete" in run("status").stdout
+    # Second project for filtering; deleted projects are hidden unless asked for.
+    other = tmp_path / "other-svc"
+    other.mkdir()
+    monkeypatch.chdir(other)
+    run("project", "state", "deleted")
+    assert [p["name"] for p in run_json("projects")] == ["demo-app"]
+    assert [p["name"] for p in run_json("projects", "--state", "deleted")] == ["other-svc"]
+    assert [p["name"] for p in run_json("projects", "-q", "OTHER", "--state", "deleted")] == ["other-svc"]
+    run("project", "state", "archived", code=2)

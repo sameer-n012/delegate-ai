@@ -27,6 +27,24 @@ class NotHolderError(DelegateError):
     code = "not_holder"
 
 
+class IdentityRequiredError(DelegateError):
+    """A write was attempted without an actor id (DELEGATE_AGENT or --as)."""
+
+    code = "no_identity"
+
+
+class ForbiddenError(DelegateError):
+    """The actor may not perform this action (e.g. an agent changing project state)."""
+
+    code = "forbidden"
+
+
+class ProjectClosedError(DelegateError):
+    """An agent tried to change tasks in a project that is not in_progress."""
+
+    code = "project_not_in_progress"
+
+
 class InvalidTransitionError(DelegateError):
     code = "invalid_transition"
 

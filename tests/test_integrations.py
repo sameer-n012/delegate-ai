@@ -6,7 +6,9 @@ import json
 import subprocess
 from pathlib import Path
 
-from delegate.core import NewTask, Project, TaskService
+import pytest
+
+from delegate.core import NewTask, Project, TaskService, connect
 from delegate.integrations import hooks
 from delegate.integrations.setup import (
     BEGIN_MARK,
@@ -103,3 +105,28 @@ def test_link_commit_from_head(make_service: ServiceFactory, tmp_path: Path) -> 
     assert linked == [f"{project.key}-1"]  # unknown ref skipped, not an error
     links = svc.get_task_detail(f"{project.key}-1").links
     assert links[0].kind == "commit" and links[0].ref == head[0]
+
+
+def test_post_commit_hook_uses_hook_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+
+    from delegate.cli.main import app
+
+    repo = tmp_path / "hookrepo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    monkeypatch.setenv("DELEGATE_DB", str(tmp_path / "hook.db"))
+    monkeypatch.setenv("DELEGATE_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("DELEGATE_AGENT", raising=False)
+    monkeypatch.chdir(repo)
+    human = TaskService(connect(tmp_path / "hook.db"), "human")
+    project = human.set_project_state(human.ensure_project(repo).id, "in_progress")
+    human.create_tasks(project.id, [NewTask(title="A")])
+    _git(repo, "commit", "--allow-empty", "-m", f"Work on {project.key}-1")
+
+    result = CliRunner().invoke(app, ["hook", "post-commit"])
+    assert result.exit_code == 0, result.output
+    assert human.get_task_detail(f"{project.key}-1").links[0].kind == "commit"
+    assert human.events_recent(project_id=project.id, limit=1)[0].agent == "git#hook"

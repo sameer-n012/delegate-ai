@@ -19,6 +19,7 @@ from delegate.core import (
     DelegateError,
     NewTask,
     Project,
+    ProjectState,
     Status,
     TaskUpdate,
     ValidationError,
@@ -139,7 +140,12 @@ def _read_text(source: str) -> str:
 def main(
     ctx: typer.Context,
     as_: Annotated[
-        str | None, typer.Option("--as", help="Actor id (default: $DELEGATE_AGENT, else human).")
+        str | None,
+        typer.Option(
+            "--as",
+            help="Actor id (default: $DELEGATE_AGENT). Without one, writes are refused. "
+            "People use --as human.",
+        ),
     ] = None,
     project: Annotated[
         str | None, typer.Option("--project", help="Project key (default: $DELEGATE_PROJECT, else cwd).")
@@ -199,10 +205,38 @@ def show(ref: str) -> None:
 
 @app.command()
 @_guarded
-def projects() -> None:
+def projects(
+    state: Annotated[
+        list[ProjectState] | None,
+        typer.Option("--state", help="Repeatable. Default: every state except deleted."),
+    ] = None,
+    query: Annotated[
+        str | None, typer.Option("--query", "-q", help="Match name, path, or key.")
+    ] = None,
+) -> None:
     """List projects."""
-    items = _state().rt().service.list_projects()
+    items = _state().rt().service.list_projects(states=state, query=query)
     _emit(items, lambda: "\n".join(render.project_line(p) for p in items) or "No projects.")
+
+
+project_app = typer.Typer(help="Project lifecycle (humans only).", no_args_is_help=True)
+app.add_typer(project_app, name="project")
+
+
+@project_app.command("state")
+@_guarded
+def project_state(
+    new_state: Annotated[
+        ProjectState | None,
+        typer.Argument(help="New state. Omit to show the current state."),
+    ] = None,
+) -> None:
+    """Show or set the project state. Agents can only change tasks while in_progress."""
+    st = _state()
+    project = st.project()
+    if new_state is not None:
+        project = st.rt().service.set_project_state(project.id, new_state)
+    _emit(project, lambda: f"{project.key} ({project.name}): {project.state.value}")
 
 
 @app.command()

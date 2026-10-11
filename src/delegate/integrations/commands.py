@@ -16,7 +16,10 @@ import typer
 
 from delegate.integrations import hooks as hook_logic
 from delegate.integrations.setup import init_repo
-from delegate.runtime import open_runtime
+from delegate.core import ANONYMOUS, ProjectState
+from delegate.runtime import open_runtime, resolve_actor
+
+GIT_HOOK_ACTOR = "git#hook"
 
 hook_app = typer.Typer(help="Hook entry points (called by Claude Code and git, not by hand).")
 
@@ -58,11 +61,16 @@ def init_command(
         )
     finally:
         rt.close()
-    typer.echo(f"Project {project.name} ({project.key}) at {result.root}")
+    typer.echo(f"Project {project.name} ({project.key}) at {result.root} [{project.state.value}]")
     for name in result.changed:
         typer.echo(f"  updated   {name}")
     for name in result.unchanged:
         typer.echo(f"  unchanged {name}")
+    if project.state != ProjectState.IN_PROGRESS:
+        typer.echo(
+            "Agents cannot change tasks until the project is in progress. Start it from the "
+            "dashboard or run: delegate --as human project state in_progress"
+        )
 
 
 def _read_hook_input() -> dict[str, Any]:
@@ -125,7 +133,10 @@ def post_commit() -> None:
         head = hook_logic.head_commit(cwd)
         if head is None:
             return
-        rt = open_runtime()
+        # The hook needs a write identity. Use the committing agent's id when it is set,
+        # else a dedicated hook identity (never an implicit human).
+        actor = resolve_actor()
+        rt = open_runtime(GIT_HOOK_ACTOR if actor == ANONYMOUS else actor)
         try:
             project = rt.project_for(cwd)
             linked = hook_logic.link_commit(rt.service, project, *head)

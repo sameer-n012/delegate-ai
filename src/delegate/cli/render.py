@@ -8,6 +8,7 @@ from delegate.core import (
     Event,
     Link,
     Project,
+    ProjectState,
     ProjectStatus,
     Task,
     TaskDetail,
@@ -50,6 +51,11 @@ def status_text(s: ProjectStatus) -> str:
         f"{s.counts[k]} {k}" for k in _COUNT_ORDER if s.counts.get(k)
     )
     lines = [f"{s.project.name} ({s.project.key}): {counts or 'no tasks'}"]
+    if s.project.state != ProjectState.IN_PROGRESS:
+        lines.append(
+            f"Project is {s.project.state.value}: agents cannot change tasks until a human "
+            "runs `delegate --as human project state in_progress`."
+        )
     if s.ready:
         lines.append("Ready:   " + " | ".join(_short(t) for t in s.ready))
     if s.mine:
@@ -116,7 +122,9 @@ def links_text(ref: str, links: list[Link]) -> str:
 
 
 def project_line(p: Project) -> str:
-    return f"{p.key}  {p.name}  {p.root_path}" + (f"  {p.git_remote}" if p.git_remote else "")
+    return f"{p.key}  {p.state.value:<11}  {p.name}  {p.root_path}" + (
+        f"  {p.git_remote}" if p.git_remote else ""
+    )
 
 
 def agent_line(a: Agent) -> str:

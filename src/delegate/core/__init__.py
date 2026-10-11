@@ -6,12 +6,16 @@ from delegate.core.errors import (
     ConflictError,
     CycleError,
     DelegateError,
+    ForbiddenError,
+    IdentityRequiredError,
     InvalidTransitionError,
     NotFoundError,
     NotHolderError,
+    ProjectClosedError,
     ValidationError,
 )
 from delegate.core.models import (
+    ANONYMOUS,
     HUMAN,
     Actor,
     Agent,
@@ -22,6 +26,7 @@ from delegate.core.models import (
     NoteKind,
     Priority,
     Project,
+    ProjectState,
     ProjectStatus,
     Status,
     Task,
@@ -31,6 +36,7 @@ from delegate.core.models import (
 from delegate.core.service import NewTask, TaskService, TaskUpdate, new_agent_id
 
 __all__ = [
+    "ANONYMOUS",
     "HUMAN",
     "Actor",
     "Agent",
@@ -38,6 +44,8 @@ __all__ = [
     "CycleError",
     "DelegateError",
     "Event",
+    "ForbiddenError",
+    "IdentityRequiredError",
     "InvalidTransitionError",
     "Link",
     "LinkKind",
@@ -48,6 +56,8 @@ __all__ = [
     "NotHolderError",
     "Priority",
     "Project",
+    "ProjectClosedError",
+    "ProjectState",
     "ProjectStatus",
     "Settings",
     "Status",

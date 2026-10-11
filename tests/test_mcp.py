@@ -35,7 +35,8 @@ EXPECTED_TOOLS = {
 def project(make_service: Callable[[str], TaskService], tmp_path: Path) -> Project:
     root = tmp_path / "proj"
     root.mkdir()
-    return make_service("human").ensure_project(root, key="DLG")
+    human = make_service("human")
+    return human.set_project_state(human.ensure_project(root, key="DLG").id, "in_progress")
 
 
 def make_server(

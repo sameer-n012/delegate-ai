@@ -14,7 +14,7 @@ def test_parallel_claims_are_exclusive(db_path: Path, tmp_path: Path) -> None:
     setup = TaskService(connect(db_path), "human")
     root = tmp_path / "proj"
     root.mkdir()
-    project = setup.ensure_project(root)
+    project = setup.set_project_state(setup.ensure_project(root).id, "in_progress")
     setup.create_tasks(project.id, [NewTask(title=f"T{i}") for i in range(n_tasks)])
 
     claimed: list[str] = []

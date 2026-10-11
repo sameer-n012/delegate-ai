@@ -10,6 +10,21 @@ from pydantic import BaseModel, ConfigDict
 HUMAN = "human"
 """Reserved actor id for people. Humans bypass holder checks and never get leases."""
 
+ANONYMOUS = "anonymous"
+"""Reserved actor id when no identity was given. It may read but every write is refused,
+so an agent that forgot to set DELEGATE_AGENT cannot silently act as a human."""
+
+
+class ProjectState(StrEnum):
+    """Project lifecycle, set by humans only. Agents may change tasks only while in_progress."""
+
+    NOT_STARTED = "not_started"
+    IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
+    INACTIVE = "inactive"
+    DELETED = "deleted"
+    """Soft delete: hidden from default listings, restorable by changing the state."""
+
 
 class Status(StrEnum):
     TODO = "todo"
@@ -75,6 +90,10 @@ class Actor(_Model):
     def is_human(self) -> bool:
         return self.id == HUMAN
 
+    @property
+    def is_anonymous(self) -> bool:
+        return self.id == ANONYMOUS
+
 
 class Project(_Model):
     id: int
@@ -82,6 +101,7 @@ class Project(_Model):
     name: str
     root_path: str
     git_remote: str | None
+    state: ProjectState
     created_at: str
 
 

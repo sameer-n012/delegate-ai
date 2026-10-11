@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from delegate.core import DelegateError, Project, Status, TaskService
+from delegate.core import DelegateError, Project, ProjectState, Status, TaskService
 from delegate.core.gitinfo import GIT_TIMEOUT_S
 
 _REF_IN_TEXT = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-(\d+)\b")
@@ -29,6 +29,11 @@ def session_start_context(service: TaskService, project: Project) -> str:
         f"{c['todo']} todo, {c['in_progress']} in progress, {c['review']} review, "
         f"{c['blocked']} blocked.",
     ]
+    if project.state != ProjectState.IN_PROGRESS:
+        lines.append(
+            f"Project state is {project.state.value}: you cannot change tasks until a human "
+            "sets it to in_progress. Ask the user before doing tracked work."
+        )
     if status.ready:
         lines.append(
             "Ready: " + " | ".join(f"{t.ref} {t.priority} {t.title}" for t in status.ready)

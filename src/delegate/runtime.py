@@ -11,7 +11,7 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
-from delegate.core import HUMAN, Project, Settings, TaskService, connect, load_settings
+from delegate.core import ANONYMOUS, Project, Settings, TaskService, connect, load_settings
 
 
 @dataclass(slots=True)
@@ -35,8 +35,13 @@ class Runtime:
 
 
 def resolve_actor(explicit: str | None = None) -> str:
-    """Actor id from an explicit value, else ``DELEGATE_AGENT``, else ``human``."""
-    return explicit or os.environ.get("DELEGATE_AGENT") or HUMAN
+    """Actor id from an explicit value, else ``DELEGATE_AGENT``, else ``anonymous``.
+
+    There is deliberately no implicit ``human``: anonymous actors can read but every
+    write is refused, so a misconfigured agent cannot bypass holder checks. People
+    opt in with ``--as human`` or ``DELEGATE_AGENT=human``.
+    """
+    return (explicit or os.environ.get("DELEGATE_AGENT") or "").strip() or ANONYMOUS
 
 
 def open_runtime(actor: str | None = None, *, settings: Settings | None = None) -> Runtime:

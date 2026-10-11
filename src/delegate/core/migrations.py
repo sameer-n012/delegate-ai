@@ -92,4 +92,11 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX events_project ON events(project_id, id);
     """,
+    # 2: project lifecycle state. New projects start not_started; projects that already
+    # exist were in active use, so they become in_progress.
+    """
+    ALTER TABLE projects ADD COLUMN state TEXT NOT NULL DEFAULT 'not_started'
+        CHECK (state IN ('not_started','in_progress','complete','inactive','deleted'));
+    UPDATE projects SET state = 'in_progress';
+    """,
 ]

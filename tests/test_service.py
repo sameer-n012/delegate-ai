@@ -8,13 +8,18 @@ from pathlib import Path
 import pytest
 
 from delegate.core import (
+    ANONYMOUS,
     ConflictError,
     CycleError,
+    ForbiddenError,
+    IdentityRequiredError,
     InvalidTransitionError,
     NewTask,
     NoteKind,
     NotHolderError,
     Project,
+    ProjectClosedError,
+    ProjectState,
     Status,
     TaskUpdate,
     ValidationError,
@@ -255,6 +260,87 @@ def test_claim_records_agent_project(make_service: ServiceFactory, project: Proj
     agent = make_service("claude#aaaa")
     agent.claim_task(project.id)
     assert [a.id for a in agent.list_agents(project_id=project.id)] == ["claude#aaaa"]
+
+
+def test_anonymous_can_read_but_not_write(make_service: ServiceFactory, project: Project) -> None:
+    make_service("human").create_tasks(project.id, [NewTask(title="A")])
+    anon = make_service(ANONYMOUS)
+    assert anon.project_status(project.id).counts["todo"] == 1
+    with pytest.raises(IdentityRequiredError):
+        anon.add_note(project.id, "DLG-1", "progress", "hi")
+    with pytest.raises(IdentityRequiredError):
+        anon.claim_task(project.id)
+    with pytest.raises(ForbiddenError):
+        anon.set_project_state(project.id, ProjectState.COMPLETE)
+
+
+def test_new_projects_start_not_started_and_block_agents(
+    make_service: ServiceFactory, tmp_path: Path
+) -> None:
+    root = tmp_path / "fresh"
+    root.mkdir()
+    human = make_service("human")
+    fresh = human.ensure_project(root)
+    assert fresh.state == ProjectState.NOT_STARTED
+    human.create_tasks(fresh.id, [NewTask(title="Planned by a human")])  # humans exempt
+    agent = make_service("claude#aaaa")
+    with pytest.raises(ProjectClosedError, match="not_started"):
+        agent.claim_task(fresh.id)
+    with pytest.raises(ProjectClosedError):
+        agent.create_tasks(fresh.id, [NewTask(title="x")])
+    with pytest.raises(ProjectClosedError):
+        agent.add_note(fresh.id, "1", "progress", "x")
+    human.set_project_state(fresh.key, "in_progress")
+    assert agent.claim_task(fresh.id) is not None
+
+
+def test_closing_project_freezes_agent_writes(make_service: ServiceFactory, project: Project) -> None:
+    make_service("human").create_tasks(project.id, [NewTask(title="A"), NewTask(title="B")])
+    agent = make_service("claude#aaaa")
+    agent.claim_task(project.id, "DLG-1")
+    human = make_service("human")
+    human.set_project_state(project.id, ProjectState.COMPLETE)
+    for call in (
+        lambda: agent.complete_task(project.id, "DLG-1", "done"),
+        lambda: agent.release_task(project.id, "DLG-1", "bye"),
+        lambda: agent.update_task(project.id, "DLG-1", TaskUpdate(title="x")),
+        lambda: agent.add_links(project.id, "DLG-1", [("url", "http://x")]),
+        lambda: agent.claim_task(project.id, "DLG-2"),
+    ):
+        with pytest.raises(ProjectClosedError):
+            call()
+    human.update_task(project.id, "DLG-2", TaskUpdate(status=Status.CANCELLED))  # humans exempt
+    events = [e for e in human.events_since(0) if e.type == "project_state_changed"]
+    assert events[-1].payload == {"from": "in_progress", "to": "complete"}
+
+
+def test_only_humans_change_project_state(make_service: ServiceFactory, project: Project) -> None:
+    with pytest.raises(ForbiddenError):
+        make_service("claude#aaaa").set_project_state(project.id, ProjectState.INACTIVE)
+    with pytest.raises(ValidationError):
+        make_service("human").set_project_state(project.id, "archived")
+
+
+def test_list_projects_filter_and_search(make_service: ServiceFactory, tmp_path: Path) -> None:
+    human = make_service("human")
+    keys: dict[str, str] = {}
+    for name in ("alpha-web", "beta-api", "gamma-ml"):
+        (tmp_path / name).mkdir()
+        keys[name] = human.ensure_project(tmp_path / name).key
+    human.set_project_state(keys["beta-api"], ProjectState.IN_PROGRESS)
+    human.set_project_state(keys["gamma-ml"], ProjectState.DELETED)
+
+    def names(ps: list[Project]) -> list[str]:
+        return [p.name for p in ps]
+
+    assert names(human.list_projects()) == ["alpha-web", "beta-api"]  # deleted hidden
+    assert names(human.list_projects(states=[ProjectState.DELETED])) == ["gamma-ml"]
+    assert names(human.list_projects(query="API")) == ["beta-api"]
+    assert names(human.list_projects(query=keys["alpha-web"].lower())) == ["alpha-web"]
+    assert names(human.list_projects(query=str(tmp_path / "alpha"))) == ["alpha-web"]
+    assert names(
+        human.list_projects(states=[ProjectState.NOT_STARTED, ProjectState.IN_PROGRESS], query="a")
+    ) == ["alpha-web", "beta-api"]
 
 
 def test_events_since(make_service: ServiceFactory, project: Project) -> None:

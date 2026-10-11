@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from delegate.core import Project, TaskService, connect
+from delegate.core import Project, ProjectState, TaskService, connect
 
 
 class FakeClock:
@@ -57,4 +57,6 @@ def make_service(conn: sqlite3.Connection, clock: FakeClock) -> ServiceFactory:
 def project(make_service: ServiceFactory, tmp_path: Path) -> Project:
     root = tmp_path / "delegate-ai"
     root.mkdir()
-    return make_service("human").ensure_project(root)
+    human = make_service("human")
+    # New projects start not_started; agents can only work in in_progress projects.
+    return human.set_project_state(human.ensure_project(root).id, ProjectState.IN_PROGRESS)
