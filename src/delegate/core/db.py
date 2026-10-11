@@ -57,7 +57,11 @@ def transaction(conn: sqlite3.Connection) -> Generator[sqlite3.Connection]:
 
 def migrate(conn: sqlite3.Connection) -> None:
     """Apply migrations newer than ``PRAGMA user_version``. Safe to run concurrently."""
+    # Fast path without the write lock: most connections find the schema current.
+    if conn.execute("PRAGMA user_version").fetchone()[0] == len(MIGRATIONS):
+        return
     with transaction(conn):
+        # Re-read under the lock: another process may have migrated meanwhile.
         current: int = conn.execute("PRAGMA user_version").fetchone()[0]
         if current > len(MIGRATIONS):
             raise RuntimeError(
