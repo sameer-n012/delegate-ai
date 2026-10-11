@@ -1,0 +1,17 @@
+CLAUDE.md
+
+# Python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+*.egg-info/
+
+# Local env and data
+.env
+*.db
+*.db-wal
+*.db-shm
