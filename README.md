@@ -26,7 +26,7 @@ delegate init
 
 This command:
 
-1. Registers the project (key from the repo name, for example `delegate-ai` → `DLG`). Use `--key` to choose the key.
+1. Registers the project (key from the repo name, for example `delegate-ai` → `DLG`). Use `--key` to choose the key. A new project starts as `not_started`. Agents cannot change its tasks until you start it (see [Project states](#project-states)).
 2. Adds usage instructions to `CLAUDE.md` (use `--file AGENTS.md` for other agents).
 3. Adds the MCP server to `.mcp.json`.
 4. Adds Claude Code hooks to `.claude/settings.json`:
@@ -48,8 +48,18 @@ If `delegate` is not on your PATH, give the full command: `delegate init --comma
 | Finish | `complete_task` | `delegate done DLG-4 "summary" --link commit=abc123` |
 | Stop early | `release_task` | `delegate release DLG-4 "handoff notes"` |
 
-CLI agents must set `DELEGATE_AGENT` (for example `DELEGATE_AGENT=codex#7f2a`). Without it, the CLI acts as `human`. Humans bypass holder checks.
+CLI agents must set `DELEGATE_AGENT` (for example `DELEGATE_AGENT=codex#7f2a`). Without an identity, the CLI is `anonymous`: reads work, but every write is refused.
+People use `--as human` (or `DELEGATE_AGENT=human`). Humans bypass holder checks, so an agent must never use `human`.
 Add `--json` to any CLI command for machine-readable output.
+
+## Project states
+
+Each project has a state: `not_started`, `in_progress`, `complete`, `inactive`, or `deleted`.
+
+- Only humans can change the state: in the dashboard, or with `delegate --as human project state in_progress`.
+- Agents can change tasks only when the project is `in_progress`. In other states, agent writes fail with `project_not_in_progress`. Humans can still edit tasks.
+- `deleted` is a soft delete. The project is hidden from listings by default, and you can restore it by changing its state.
+- `delegate projects --state deleted -q api` filters the list by state and searches by name, path, or key. The dashboard home page has the same filter and search.
 
 ## Dashboard
 
@@ -59,6 +69,7 @@ delegate serve            # http://127.0.0.1:3140
 
 The dashboard shows a board for each project, task details, active agents, and a live activity feed.
 You can create tasks, change status and priority, and add notes. Agents see your notes.
+The home page filters projects by state and searches by name, path, or key. You can change a project's state from its card or from the board header.
 
 ## Rules
 
@@ -79,7 +90,7 @@ Settings come from environment variables, then `~/.delegate/config.json`, then d
 | `DELEGATE_DB` | `db_path` | `$DELEGATE_HOME/delegate.db` |
 | `DELEGATE_LEASE_MINUTES` | `lease_minutes` | `15` |
 | `DELEGATE_HOST` / `DELEGATE_PORT` | `dashboard_host` / `dashboard_port` | `127.0.0.1` / `3140` |
-| `DELEGATE_AGENT` | – | `human` (CLI); random `claude#xxxx` (MCP) |
+| `DELEGATE_AGENT` | – | `anonymous`, read-only (CLI); random `claude#xxxx` (MCP); `git#hook` (post-commit hook) |
 | `DELEGATE_AGENT_KIND` | – | `claude` (prefix for MCP agent ids) |
 | `DELEGATE_PROJECT` | – | detected from the git repo of the current directory |
 

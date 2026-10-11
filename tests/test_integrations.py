@@ -62,6 +62,7 @@ def test_init_repo_is_idempotent_and_merges(make_service: ServiceFactory, tmp_pa
     hook = repo / ".git" / "hooks" / "post-commit"
     assert hook.read_text().count("hook post-commit") == 1
     assert ".mcp.json" in first.changed and ".mcp.json" in second.unchanged
+    assert str(hook) in first.changed and str(hook) in second.unchanged
 
 
 def test_session_start_context(make_service: ServiceFactory, project: Project) -> None:

@@ -31,7 +31,8 @@ def instructions_block(project: Project) -> str:
 
 This repo tracks work in **delegate** (project key `{project.key}`; tasks look like `{project.key}-42`).
 Use the `delegate` MCP tools (or the `delegate` CLI with `--json`; CLI users must set
-`DELEGATE_AGENT=<tool>#<id>`, e.g. `codex#7f2a`, or they act as `human`):
+`DELEGATE_AGENT=<tool>#<id>`, e.g. `codex#7f2a`, or every write is refused; never use `human`).
+Agents can change tasks only while the project is `in_progress`; if it is not, ask the user.
 
 1. Start with `project_status` to see ready work, your claims, and blockers.
 2. `claim_task` before you work on anything (no ref = next ready task). Claims expire if you go quiet.
@@ -111,8 +112,11 @@ def write_claude_hooks(root: Path, command: list[str]) -> bool:
     return changed
 
 
-def install_git_hook(cwd: Path, command: list[str]) -> Path | None:
-    """Add a post-commit hook (shared by all worktrees). Returns its path, or None outside git."""
+def install_git_hook(cwd: Path, command: list[str]) -> tuple[Path, bool] | None:
+    """Add a post-commit hook (shared by all worktrees).
+
+    Returns ``(path, changed)``, or None outside git.
+    """
     hooks_dir_raw = run_git(cwd, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
     if hooks_dir_raw is None:
         return None
@@ -120,10 +124,12 @@ def install_git_hook(cwd: Path, command: list[str]) -> Path | None:
     hook.parent.mkdir(parents=True, exist_ok=True)
     # `|| true`: a tracker failure must never break a commit.
     body = f"{HOOK_BEGIN}\n{' '.join(command)} hook post-commit >/dev/null 2>&1 || true\n{HOOK_END}\n"
-    text = hook.read_text(encoding="utf-8") if hook.exists() else "#!/bin/sh\n"
-    hook.write_text(upsert_marked_block(text, body, HOOK_BEGIN, HOOK_END), encoding="utf-8")
+    old = hook.read_text(encoding="utf-8") if hook.exists() else None
+    new = upsert_marked_block(old or "#!/bin/sh\n", body, HOOK_BEGIN, HOOK_END)
+    if new != old:
+        hook.write_text(new, encoding="utf-8")
     hook.chmod(hook.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    return hook
+    return hook, new != old
 
 
 @dataclass(slots=True)
@@ -162,7 +168,7 @@ def init_repo(
     if hooks:
         note(".claude/settings.json", write_claude_hooks(root, command))
     if git_hook:
-        hook = install_git_hook(cwd, command)
-        if hook is not None:
-            note(str(hook), True)
+        installed = install_git_hook(cwd, command)
+        if installed is not None:
+            note(str(installed[0]), installed[1])
     return result
