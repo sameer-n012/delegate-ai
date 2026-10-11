@@ -20,7 +20,7 @@ import secrets
 import sqlite3
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -397,8 +397,12 @@ class TaskService:
         query: str | None = None,
         include_closed: bool = False,
         limit: int = 200,
+        order: Literal["priority", "recent"] = "priority",
     ) -> list[TaskSummary]:
-        """List tasks. Closed tasks are hidden unless requested via ``statuses`` or ``include_closed``."""
+        """List tasks. Closed tasks are hidden unless requested via ``statuses`` or ``include_closed``.
+
+        ``order="recent"`` sorts by close time (else last update), newest first.
+        """
         self.reap_expired_leases()
         where = ["t.project_id = ?"]
         params: list[Any] = [project_id]
@@ -420,7 +424,12 @@ class TaskService:
         sql = _TASK_SELECT + " WHERE " + " AND ".join(where)
         if ready_only:
             sql = f"SELECT * FROM ({sql}) WHERE ready"
-        sql += " ORDER BY priority, seq LIMIT ?"
+        # Qualify columns unless wrapped: the parent join (pt) has the same column names.
+        col = "" if ready_only else "t."
+        if order == "recent":
+            sql += f" ORDER BY COALESCE({col}closed_at, {col}updated_at) DESC, {col}seq DESC LIMIT ?"
+        else:
+            sql += f" ORDER BY {col}priority, {col}seq LIMIT ?"
         params.append(max(1, min(limit, 1000)))
         return [_summary(r) for r in self.conn.execute(sql, params)]
 
@@ -649,6 +658,10 @@ class TaskService:
             )
             if cur.rowcount != 1:
                 raise ConflictError(f"{_ref(row)} was claimed by someone else")
+            # Remember where the agent works so dashboards can list it per project.
+            self.conn.execute(
+                "UPDATE agents SET project_id = ? WHERE id = ?", (row["project_id"], self.actor.id)
+            )
             self._emit("task_claimed", row["project_id"], row["id"], {"from": row["status"]})
             return _task(self._row_by_id(row["id"]))
 
@@ -883,6 +896,16 @@ class TaskService:
     def events_since(
         self, after_id: int = 0, *, project_id: int | None = None, limit: int = 100
     ) -> list[Event]:
+        """Events with id > ``after_id``, oldest first (for streaming)."""
+        return self._events(after_id, project_id, limit, newest_first=False)
+
+    def events_recent(self, *, project_id: int | None = None, limit: int = 30) -> list[Event]:
+        """The latest ``limit`` events, newest first (for activity feeds)."""
+        return self._events(0, project_id, limit, newest_first=True)
+
+    def _events(
+        self, after_id: int, project_id: int | None, limit: int, *, newest_first: bool
+    ) -> list[Event]:
         sql = """SELECT e.*, p.key AS pkey, t.seq AS task_seq FROM events e
                  LEFT JOIN tasks t ON t.id = e.task_id
                  LEFT JOIN projects p ON p.id = t.project_id
@@ -891,7 +914,7 @@ class TaskService:
         if project_id is not None:
             sql += " AND e.project_id = ?"
             params.append(project_id)
-        sql += " ORDER BY e.id LIMIT ?"
+        sql += f" ORDER BY e.id {'DESC' if newest_first else 'ASC'} LIMIT ?"
         params.append(max(1, min(limit, 1000)))
         return [
             Event(
@@ -970,6 +993,8 @@ def _summary(row: sqlite3.Row) -> TaskSummary:
         assignee=row["assignee"],
         parent=_parent_ref(row),
         ready=bool(row["ready"]),
+        updated_at=row["updated_at"],
+        closed_at=row["closed_at"],
     )
 
 

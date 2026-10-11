@@ -235,6 +235,28 @@ def test_project_status(make_service: ServiceFactory, project: Project) -> None:
     assert s.counts["todo"] == 1
 
 
+def test_list_recent_order_and_events_recent(
+    make_service: ServiceFactory, project: Project, clock: FakeClock
+) -> None:
+    human = make_service("human")
+    human.create_tasks(project.id, [NewTask(title="A", local_id="a"), NewTask(title="B", parent="a")])
+    human.update_task(project.id, "DLG-2", TaskUpdate(status=Status.DONE))
+    clock.advance(1)
+    human.update_task(project.id, "DLG-1", TaskUpdate(status=Status.DONE))
+    recent = human.list_tasks(project.id, statuses=[Status.DONE], order="recent")
+    assert [t.ref for t in recent] == ["DLG-1", "DLG-2"]
+    assert recent[0].closed_at is not None
+    newest = human.events_recent(project_id=project.id, limit=2)
+    assert newest[0].id > newest[1].id and newest[0].task == "DLG-1"
+
+
+def test_claim_records_agent_project(make_service: ServiceFactory, project: Project) -> None:
+    make_service("human").create_tasks(project.id, [NewTask(title="A")])
+    agent = make_service("claude#aaaa")
+    agent.claim_task(project.id)
+    assert [a.id for a in agent.list_agents(project_id=project.id)] == ["claude#aaaa"]
+
+
 def test_events_since(make_service: ServiceFactory, project: Project) -> None:
     svc = make_service("human")
     start = svc.latest_event_id()

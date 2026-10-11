@@ -107,6 +107,8 @@ class TaskSummary(_Model):
     parent: str | None
     ready: bool
     """True when status is todo and every dependency is done or cancelled."""
+    updated_at: str
+    closed_at: str | None
 
 
 class Task(_Model):

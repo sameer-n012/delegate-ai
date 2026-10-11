@@ -15,3 +15,6 @@ build/
 *.db
 *.db-wal
 *.db-shm
+
+# Claude Code runtime state
+.claude/*.lock
