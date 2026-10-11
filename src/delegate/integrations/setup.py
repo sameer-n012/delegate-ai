@@ -30,7 +30,8 @@ def instructions_block(project: Project) -> str:
 ## Task tracking (delegate)
 
 This repo tracks work in **delegate** (project key `{project.key}`; tasks look like `{project.key}-42`).
-Use the `delegate` MCP tools (or the `delegate` CLI with `--json`):
+Use the `delegate` MCP tools (or the `delegate` CLI with `--json`; CLI users must set
+`DELEGATE_AGENT=<tool>#<id>`, e.g. `codex#7f2a`, or they act as `human`):
 
 1. Start with `project_status` to see ready work, your claims, and blockers.
 2. `claim_task` before you work on anything (no ref = next ready task). Claims expire if you go quiet.
