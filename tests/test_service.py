@@ -216,6 +216,18 @@ def test_cycles_rejected(make_service: ServiceFactory, project: Project) -> None
         human.update_task(project.id, "DLG-1", TaskUpdate(parent="DLG-2"))
 
 
+def test_clear_parent(make_service: ServiceFactory, project: Project) -> None:
+    human = make_service("human")
+    human.create_tasks(project.id, [NewTask(title="A", local_id="a"), NewTask(title="B", parent="a")])
+    with pytest.raises(ValidationError):
+        human.update_task(project.id, "DLG-2", TaskUpdate(parent=""))
+    with pytest.raises(ValidationError):
+        human.update_task(project.id, "DLG-2", TaskUpdate(parent="DLG-1", clear_parent=True))
+    assert human.update_task(project.id, "DLG-2", TaskUpdate(clear_parent=True)).parent is None
+    # Clearing an absent parent is a no-op, not an error.
+    assert human.update_task(project.id, "DLG-2", TaskUpdate(clear_parent=True)).parent is None
+
+
 def test_optimistic_version(make_service: ServiceFactory, project: Project) -> None:
     human = make_service("human")
     (t,) = human.create_tasks(project.id, [NewTask(title="A")])

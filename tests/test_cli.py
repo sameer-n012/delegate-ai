@@ -123,7 +123,9 @@ def test_update_status_and_deps() -> None:
     version = run_json("update", b, "--desc", "d")["version"]
     run("update", b, "--title", "stale", "--expect-version", str(version - 1), code=1)
     assert run_json("update", b, "--parent", a)["parent"] == a
-    assert run_json("update", b, "--parent", "")["parent"] is None
+    run("update", b, "--parent", "", code=2)
+    run("update", b, "--parent", a, "--clear-parent", code=2)
+    assert run_json("update", b, "--clear-parent")["parent"] is None
 
 
 def test_note_and_stdin_note() -> None:

@@ -169,13 +169,14 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
         priority: str | None = None,
         status: Status | None = None,
         parent: str | None = None,
+        clear_parent: bool = False,
         add_deps: list[str] | None = None,
         remove_deps: list[str] | None = None,
         expected_version: int | None = None,
         project: str | None = None,
     ) -> str:
         """Change fields of a task you hold (or any non-claimed task). Omitted fields stay
-        as they are. parent="" clears the parent. status cannot be in_progress (use
+        as they are. clear_parent=true removes the parent. status cannot be in_progress (use
         claim_task); use complete_task to finish. expected_version guards against edits
         by others."""
 
@@ -187,6 +188,7 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
                 priority=priority,
                 status=status,
                 parent=parent,
+                clear_parent=clear_parent,
                 add_deps=add_deps or [],
                 remove_deps=remove_deps or [],
             )

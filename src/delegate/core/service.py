@@ -110,7 +110,7 @@ class NewTask(BaseModel):
 class TaskUpdate(BaseModel):
     """Input for ``update_task``. ``None`` means "leave unchanged".
 
-    ``parent=""`` clears the parent.
+    ``clear_parent=True`` removes the parent. It cannot be combined with ``parent``.
     """
 
     title: str | None = Field(default=None, min_length=1, max_length=300)
@@ -119,6 +119,7 @@ class TaskUpdate(BaseModel):
     priority: int | str | None = None
     status: Status | None = None
     parent: str | None = None
+    clear_parent: bool = False
     add_deps: list[str] = Field(default_factory=list[str])
     remove_deps: list[str] = Field(default_factory=list[str])
 
@@ -764,8 +765,13 @@ class TaskService:
                 if priority != row["priority"]:
                     sets["priority"] = priority
                     changed.append("priority")
-            if update.parent is not None:
-                if update.parent == "":
+            if update.clear_parent and update.parent is not None:
+                raise ValidationError("Use parent or clear_parent, not both")
+            if update.parent == "":
+                # The old way to clear a parent. Refuse it so it is not read as a ref.
+                raise ValidationError("parent must be a task ref; use clear_parent to remove it")
+            if update.clear_parent or update.parent is not None:
+                if update.parent is None:
                     new_parent: int | None = None
                 else:
                     parent_row = self._row(update.parent, row["project_id"])

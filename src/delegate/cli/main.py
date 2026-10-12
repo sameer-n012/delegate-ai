@@ -357,7 +357,8 @@ def update(
     acceptance: Annotated[str | None, typer.Option()] = None,
     priority: Annotated[str | None, typer.Option()] = None,
     status: Annotated[Status | None, typer.Option()] = None,
-    parent: Annotated[str | None, typer.Option(help="New parent; '' clears it.")] = None,
+    parent: Annotated[str | None, typer.Option(help="New parent task.")] = None,
+    clear_parent: Annotated[bool, typer.Option("--clear-parent", help="Remove the parent.")] = False,
     add_dep: Annotated[list[str] | None, typer.Option()] = None,
     rm_dep: Annotated[list[str] | None, typer.Option()] = None,
     expect_version: Annotated[int | None, typer.Option(help="Fail if the task version differs.")] = None,
@@ -371,6 +372,7 @@ def update(
         priority=priority,
         status=status,
         parent=parent,
+        clear_parent=clear_parent,
         add_deps=add_dep or [],
         remove_deps=rm_dep or [],
     )
