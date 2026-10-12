@@ -33,7 +33,8 @@ def instructions_block(project: Project) -> str:
 This repo tracks work in **delegate** (project key `{project.key}`; tasks look like `{project.key}-42`).
 Use the `delegate` MCP tools. They are the preferred method: they know your agent id and need no
 permission prompts. Use the CLI only if the MCP tools are not available: pass your id with `--as`
-on every command and add `--json`, e.g. `delegate --as codex#7f2a --json claim`. Pick one id
+on every command and add `--json`, e.g. `delegate --as codex#7f2a --json claim` (these options may
+also go after the command). Pick one id
 (`<tool>#<4 hex>`) per session and keep it. Without `--as`, every write is refused; never use `human`.
 Agents can change tasks only while the project is `in_progress`; if it is not, ask the user.
 

@@ -52,6 +52,7 @@ Agents should use the MCP tools when they can. The CLI is the fallback.
 CLI agents pass their id with `--as` on every command (for example `delegate --as codex#7f2a claim`). The `DELEGATE_AGENT` environment variable also works, but `--as` is preferred: every command then starts with `delegate`, which makes permission rules simpler. Without an identity, the CLI is `anonymous`: reads work, but every write is refused.
 People use `--as human`. Humans bypass holder checks, so an agent must never use `human`. For the same reason, do not allow `Bash(delegate:*)` for agents: that rule would also allow `delegate --as human`.
 Add `--json` to any CLI command for machine-readable output.
+The global options `--as`, `--json`, and `--project` work before or after the command name (`delegate status --json` is the same as `delegate --json status`).
 
 ## Project states
 

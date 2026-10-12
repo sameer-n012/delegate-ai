@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from delegate.cli.main import app
+from delegate.cli.main import app, hoist_global_options
 
 runner = CliRunner()
 
@@ -235,3 +235,31 @@ def test_project_state_and_projects_filter(monkeypatch: pytest.MonkeyPatch, tmp_
     assert [p["name"] for p in run_json("projects", "--state", "deleted")] == ["other-svc"]
     assert [p["name"] for p in run_json("projects", "-q", "OTHER", "--state", "deleted")] == ["other-svc"]
     run("project", "state", "archived", code=2)
+
+
+@pytest.mark.parametrize(
+    ("given", "expected"),
+    [
+        (["status", "--json"], ["--json", "status"]),
+        (["claim", "DLG-1", "--as", "a#1"], ["--as", "a#1", "claim", "DLG-1"]),
+        (["list", "--as=a#1", "--project", "WEB", "-q", "x"], ["--as=a#1", "--project", "WEB", "list", "-q", "x"]),
+        (["--json", "status"], ["--json", "status"]),
+        # After `--` every token is positional.
+        (["note", "DLG-1", "--", "--json"], ["note", "DLG-1", "--", "--json"]),
+        # A value option with no value stays for Click to report.
+        (["status", "--as"], ["status", "--as"]),
+    ],
+)
+def test_hoist_global_options(given: list[str], expected: list[str]) -> None:
+    assert hoist_global_options(given) == expected
+
+
+def test_global_options_after_subcommand(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    run("add", "First")
+    monkeypatch.delenv("DELEGATE_AGENT")
+    # The console script calls app() with no arguments and Click reads sys.argv.
+    monkeypatch.setattr("sys.argv", ["delegate", "claim", "--as", "codex#7f2a", "--json"])
+    with pytest.raises(SystemExit) as exit_info:
+        app()
+    assert exit_info.value.code == 0
+    assert json.loads(capsys.readouterr().out)["assignee"] == "codex#7f2a"

@@ -27,9 +27,51 @@ from delegate.core import (
 )
 from delegate.runtime import Runtime, open_runtime, resolve_actor
 
-app = typer.Typer(
-    help="Task tracker for coding agents.", no_args_is_help=True, add_completion=False
-)
+GLOBAL_FLAGS = frozenset({"--json"})
+GLOBAL_VALUE_OPTIONS = frozenset({"--as", "--project"})
+
+
+def hoist_global_options(args: list[str]) -> list[str]:
+    """Move global options found after the subcommand to the front of ``args``.
+
+    Click only accepts the callback's options before the subcommand, so ``delegate status
+    --json`` would fail. Agents often write it that way. Handles ``--as X`` and ``--as=X``.
+    Stops at ``--``, so later tokens stay positional. A value option with no value is left
+    in place for Click to report.
+    """
+    front: list[str] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--":
+            rest.extend(args[i:])
+            break
+        name = arg.split("=", 1)[0]
+        if arg in GLOBAL_FLAGS:
+            front.append(arg)
+        elif name in GLOBAL_VALUE_OPTIONS and "=" in arg:
+            front.append(arg)
+        elif arg in GLOBAL_VALUE_OPTIONS and i + 1 < len(args):
+            front.extend(args[i : i + 2])
+            i += 1
+        else:
+            rest.append(arg)
+        i += 1
+    return front + rest
+
+
+class _App(typer.Typer):
+    """Typer app that accepts global options anywhere on the command line."""
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        # The console script calls app() with no arguments, so Click reads sys.argv.
+        if not args and "args" not in kwargs:
+            kwargs["args"] = hoist_global_options(sys.argv[1:])
+        return super().__call__(*args, **kwargs)
+
+
+app = _App(help="Task tracker for coding agents.", no_args_is_help=True, add_completion=False)
 # Integrations (Phase 3) live in delegate.integrations; they manage their own runtime
 # and error handling because hooks must always exit 0.
 app.command("init")(init_command)
