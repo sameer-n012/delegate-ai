@@ -36,6 +36,7 @@ textarea { width: 100%; resize: vertical; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
+.toggles { display: flex; gap: 14px; }
 .toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .toggle input { padding: 0; }
 .live-ind { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }

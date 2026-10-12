@@ -25,8 +25,8 @@ BOARD_COLUMNS: tuple[Status, ...] = (
     Status.IN_PROGRESS,
     Status.REVIEW,
     Status.BLOCKED,
-    Status.DONE,
 )
+"""Columns that always show. Done and Cancelled show only when their toggle is on."""
 COLUMN_LABELS: dict[str, str] = {
     "todo": "To do",
     "in_progress": "In progress",
@@ -174,9 +174,21 @@ class Column:
     truncated: bool = False
 
 
-def board_columns(svc: TaskService, project: Project, show_cancelled: bool) -> list[Column]:
+@dataclass(frozen=True, slots=True)
+class BoardOptions:
+    """Which closed columns the board shows. Both are hidden by default."""
+
+    show_done: bool = False
+    show_cancelled: bool = False
+
+
+def board_columns(svc: TaskService, project: Project, opts: BoardOptions) -> list[Column]:
     columns: list[Column] = []
-    statuses = list(BOARD_COLUMNS) + ([Status.CANCELLED] if show_cancelled else [])
+    statuses = [
+        *BOARD_COLUMNS,
+        *([Status.DONE] if opts.show_done else []),
+        *([Status.CANCELLED] if opts.show_cancelled else []),
+    ]
     for status in statuses:
         truncated = False
         if status.is_closed:

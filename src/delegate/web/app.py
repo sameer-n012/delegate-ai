@@ -263,12 +263,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             selected=[s.value for s in states or []],
         )
 
-    def board_ctx(svc: TaskService, key: str, show_cancelled: bool) -> dict[str, Any]:
+    def board_ctx(svc: TaskService, key: str, opts: views.BoardOptions) -> dict[str, Any]:
         project = _project(svc, key)
         return {
             "project": project,
-            "columns": views.board_columns(svc, project, show_cancelled),
-            "show_cancelled": show_cancelled,
+            "columns": views.board_columns(svc, project, opts),
+            "opts": opts,
         }
 
     def side_ctx(svc: TaskService, key: str) -> dict[str, Any]:
@@ -280,15 +280,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.get("/p/{key}", response_class=HTMLResponse)
-    def board(request: Request, key: str, svc: Svc, show_cancelled: int = 0) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
-        ctx = {**board_ctx(svc, key, bool(show_cancelled)), **side_ctx(svc, key)}
+    def board(  # pyright: ignore[reportUnusedFunction]
+        request: Request, key: str, svc: Svc, show_done: int = 0, show_cancelled: int = 0
+    ) -> HTMLResponse:
+        opts = views.BoardOptions(bool(show_done), bool(show_cancelled))
+        ctx = {**board_ctx(svc, key, opts), **side_ctx(svc, key)}
         return render(request, "board.html", svc, drawer=None, **ctx)
 
     @app.get("/p/{key}/board", response_class=HTMLResponse)
     def board_fragment(  # pyright: ignore[reportUnusedFunction]
-        request: Request, key: str, svc: Svc, show_cancelled: int = 0
+        request: Request, key: str, svc: Svc, show_done: int = 0, show_cancelled: int = 0
     ) -> HTMLResponse:
-        return render(request, "_board.html", svc, **board_ctx(svc, key, bool(show_cancelled)))
+        opts = views.BoardOptions(bool(show_done), bool(show_cancelled))
+        return render(request, "_board.html", svc, **board_ctx(svc, key, opts))
 
     @app.get("/p/{key}/side", response_class=HTMLResponse)
     def side_fragment(request: Request, key: str, svc: Svc) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
@@ -309,7 +313,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise NotFoundError(f"Task {ref} not found in {project.key}")
         headers = {"HX-Trigger": "boardChanged"} if changed else None
         if full_page:
-            ctx = {**board_ctx(svc, key, False), **side_ctx(svc, key)}
+            ctx = {**board_ctx(svc, key, views.BoardOptions()), **side_ctx(svc, key)}
             return render(request, "board.html", svc, drawer=detail, **ctx)
         return render(request, "_drawer.html", svc, headers=headers, project=project, d=detail)
 

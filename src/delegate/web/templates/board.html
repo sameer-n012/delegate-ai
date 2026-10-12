@@ -2,7 +2,10 @@
 {% block title %}{{ project.key }} - delegate{% endblock %}
 {% block header_extra %}
 <span id="live" class="live-ind" title="Live updates"><i class="dot"></i><span>connecting</span></span>
-<label class="toggle"><input type="checkbox" id="show-cancelled"{% if show_cancelled %} checked{% endif %}> Cancelled</label>
+<span id="board-opts" class="toggles">
+  <label class="toggle"><input type="checkbox" class="board-opt" name="show_done" value="1"{% if opts.show_done %} checked{% endif %}> Done</label>
+  <label class="toggle"><input type="checkbox" class="board-opt" name="show_cancelled" value="1"{% if opts.show_cancelled %} checked{% endif %}> Cancelled</label>
+</span>
 {% endblock %}
 {% block body %}
 <div class="layout" data-key="{{ project.key }}" data-stream="/p/{{ project.key }}/events/stream">
@@ -14,8 +17,8 @@
     {% include "_pstate.html" %}
     <div id="newtask">{% include "_new_task.html" %}</div>
     <div id="board" class="board-wrap"
-         hx-get="/p/{{ project.key }}/board{% if show_cancelled %}?show_cancelled=1{% endif %}"
-         hx-trigger="boardChanged from:body, every 30s" hx-swap="innerHTML">
+         hx-get="/p/{{ project.key }}/board" hx-include="#board-opts"
+         hx-trigger="boardChanged from:body, boardOpts from:body, every 30s" hx-swap="innerHTML">
       {% include "_board.html" %}
     </div>
   </main>

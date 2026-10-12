@@ -72,17 +72,23 @@ def test_board_columns_and_markers(client: TestClient) -> None:
     assert "claude#a1" in html  # agents panel
 
 
-def test_done_column_capped_and_cancelled_toggle(env: Env, client: TestClient) -> None:
+def test_closed_columns_hidden_by_default_and_done_capped(env: Env, client: TestClient) -> None:
     human = env.service("human")
     items = [NewTask(title=f"bulk {i}") for i in range(25)]
     for t in human.create_tasks(env.project.id, items):
         human.update_task(env.project.id, t.ref, _status("done"))
     human.update_task(env.project.id, "WEB-3", _status("cancelled"))
     html = client.get("/p/WEB/board").text
+    assert 'aria-label="Done"' not in html and 'aria-label="Cancelled"' not in html
+    html = client.get("/p/WEB/board?show_done=1").text
     done = html.split('aria-label="Done"')[1].split("</section>")[0]
     assert done.count('class="card ') == 20
     assert 'aria-label="Cancelled"' not in html
-    assert 'aria-label="Cancelled"' in client.get("/p/WEB/board?show_cancelled=1").text
+    both = client.get("/p/WEB/board?show_done=1&show_cancelled=1").text
+    assert 'aria-label="Done"' in both and 'aria-label="Cancelled"' in both
+    page = client.get("/p/WEB?show_done=1").text  # full page: toggle state is rendered
+    assert 'name="show_done" value="1" checked' in page
+    assert 'name="show_cancelled" value="1">' in page
 
 
 def _status(value: str):  # noqa: ANN202

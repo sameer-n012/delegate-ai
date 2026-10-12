@@ -3,7 +3,15 @@
   "use strict";
 
   var drawer = function () { return document.getElementById("drawer"); };
-  var boardUrl = function () { return "/p/" + document.body.dataset.project; };
+  var boardPath = function () { return "/p/" + document.body.dataset.project; };
+
+  // The board URL keeps the column toggles (show_done, show_cancelled) as query parameters.
+  function boardUrl() {
+    var params = new URLSearchParams();
+    document.querySelectorAll(".board-opt:checked").forEach(function (o) { params.set(o.name, o.value); });
+    var q = params.toString();
+    return boardPath() + (q ? "?" + q : "");
+  }
 
   function openDrawer(open) {
     var d = drawer();
@@ -20,7 +28,11 @@
   document.addEventListener("change", function (e) {
     var t = e.target;
     if (t.id === "project-switch") location.href = t.value ? "/p/" + t.value : "/";
-    if (t.id === "show-cancelled") location.href = boardUrl() + (t.checked ? "?show_cancelled=1" : "");
+    if (t.classList && t.classList.contains("board-opt")) {
+      // Refresh only the board; the drawer and the URL path stay as they are.
+      if (location.pathname === boardPath()) history.replaceState({}, "", boardUrl());
+      htmx.trigger(document.body, "boardOpts");
+    }
   });
 
   document.addEventListener("click", function (e) {
@@ -34,7 +46,7 @@
     history.pushState({}, "", boardUrl());
   }
   window.addEventListener("popstate", function () {
-    if (location.pathname === boardUrl()) openDrawer(false);
+    if (location.pathname === boardPath()) openDrawer(false);
   });
 
   // Ask before a project is deleted. A static hx-confirm would also ask for the other states.
