@@ -35,8 +35,21 @@
     }
   });
 
+  // A click outside the open drawer closes it. Clicks on links that load a task into the
+  // drawer (cards, task links) switch the task instead, and toasts stay clickable. The
+  // pointerdown check stops a text selection that starts in the drawer from closing it.
+  var downInDrawer = false;
+  document.addEventListener("pointerdown", function (e) {
+    var d = drawer();
+    downInDrawer = !!d && d.contains(e.target);
+  });
   document.addEventListener("click", function (e) {
-    if (e.target.id === "drawer-close") closeDrawer();
+    if (e.target.id === "drawer-close") { closeDrawer(); return; }
+    var d = drawer();
+    if (!currentRef() || downInDrawer || d.contains(e.target)) return;
+    if (!document.contains(e.target)) return; // removed by a swap during the click
+    if (e.target.closest('[hx-target="#drawer-body"], #toasts')) return;
+    closeDrawer();
   });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && currentRef()) closeDrawer();
