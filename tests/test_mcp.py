@@ -161,14 +161,22 @@ def test_update_task_and_version_conflict(
     server = make_server(make_service, conn, project, "claude#aaaa")
 
     async def go() -> list[tuple[bool, str]]:
-        await call(server, "create_tasks", tasks=[{"title": "One"}, {"title": "Two"}])
+        await call(server, "create_tasks", tasks=[{"title": "One"}, {"title": "Two", "type": "bug"}])
         return [
-            await call(server, "update_task", ref="DLG-1", title="Uno", priority="P0", add_deps=["DLG-2"]),
+            await call(
+                server, "update_task", ref="DLG-1", title="Uno", priority="P0", type="feature",
+                add_deps=["DLG-2"],
+            ),
             await call(server, "update_task", ref="DLG-1", title="X", expected_version=99),
             await call(server, "update_task", ref="DLG-1", status="in_progress"),
+            await call(server, "list_tasks"),
+            await call(server, "get_task", ref="DLG-1"),
         ]
 
-    ok, conflict, transition = run(go)
+    ok, conflict, transition, listing, detail = run(go)
     assert not ok[0] and "Uno" in ok[1] and "P0" in ok[1]
+    # Typed tasks show their type in lists; unknown is left out to save context.
+    assert "DLG-2 [P2 todo bug] Two" in listing[1] and "[P0 todo feature]" in listing[1]
+    assert "type=feature" in detail[1]
     assert conflict[0] and "conflict" in conflict[1]
     assert transition[0] and "invalid_transition" in transition[1]

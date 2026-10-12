@@ -61,6 +61,21 @@ class Priority(IntEnum):
         return f"P{self.value}"
 
 
+class TaskType(StrEnum):
+    """What kind of work a task is. ``unknown`` is the default when no type is given."""
+
+    FEATURE = "feature"
+    BUG = "bug"
+    REFACTOR = "refactor"
+    TEST = "test"
+    DOCS = "docs"
+    DESIGN = "design"
+    RESEARCH = "research"
+    CHORE = "chore"
+    """Maintenance: dependencies, CI, tooling, config."""
+    UNKNOWN = "unknown"
+
+
 class NoteKind(StrEnum):
     PROGRESS = "progress"
     DECISION = "decision"
@@ -121,6 +136,7 @@ class TaskSummary(_Model):
 
     ref: str
     title: str
+    type: TaskType
     status: Status
     priority: Priority
     assignee: str | None
@@ -140,6 +156,7 @@ class Task(_Model):
     title: str
     description: str
     acceptance: str
+    type: TaskType
     status: Status
     priority: Priority
     assignee: str | None

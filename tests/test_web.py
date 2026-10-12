@@ -135,6 +135,19 @@ def test_create_task(env: Env, client: TestClient) -> None:
     assert [d.ref for d in detail.depends_on] == ["WEB-1", "WEB-2"]
 
 
+def test_task_type_icon_create_and_change(env: Env, client: TestClient) -> None:
+    board = client.get("/p/WEB/board", headers=HX).text
+    assert 'class="ttype tt-unknown"' in board and "<svg" in board
+    r = client.post("/p/WEB/tasks", content="title=Fix+it&type=bug", headers={**FORM, **HX})
+    assert r.status_code == 200 and "Created WEB-4" in r.text
+    assert env.service("human").get_task_detail("WEB-4").task.type.value == "bug"
+    drawer = client.post("/p/WEB/t/WEB-3/type", content="type=docs", headers={**FORM, **HX}).text
+    assert 'aria-label="Type: Docs"' in drawer
+    assert env.service("human").get_task_detail("WEB-3").task.type.value == "docs"
+    assert client.post("/p/WEB/t/WEB-3/type", content="type=epic", headers={**FORM, **HX}).status_code == 400
+    assert [t["ref"] for t in client.get("/api/p/WEB/tasks?type=bug").json()] == ["WEB-4"]
+
+
 def test_json_api(client: TestClient) -> None:
     assert [p["key"] for p in client.get("/api/projects").json()] == ["WEB"]
     status = client.get("/api/p/WEB/status").json()

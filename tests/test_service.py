@@ -21,6 +21,7 @@ from delegate.core import (
     ProjectClosedError,
     ProjectState,
     Status,
+    TaskType,
     TaskUpdate,
     ValidationError,
 )
@@ -214,6 +215,24 @@ def test_cycles_rejected(make_service: ServiceFactory, project: Project) -> None
     human.update_task(project.id, "DLG-2", TaskUpdate(parent="DLG-1"))
     with pytest.raises(CycleError):
         human.update_task(project.id, "DLG-1", TaskUpdate(parent="DLG-2"))
+
+
+def test_task_types(make_service: ServiceFactory, project: Project) -> None:
+    human = make_service("human")
+    plain, bug = human.create_tasks(
+        project.id, [NewTask(title="Plain"), NewTask(title="Crash", type="Bug")]
+    )
+    assert plain.type is TaskType.UNKNOWN and bug.type is TaskType.BUG
+    with pytest.raises(ValidationError, match="Invalid task type"):
+        human.create_tasks(project.id, [NewTask(title="X", type="epic")])
+    updated = human.update_task(project.id, plain.ref, TaskUpdate(type=TaskType.DOCS))
+    assert updated.type is TaskType.DOCS and updated.version == plain.version + 1
+    # Same type again is a no-op: no new version.
+    assert human.update_task(project.id, plain.ref, TaskUpdate(type="docs")).version == updated.version
+    with pytest.raises(ValidationError):
+        human.update_task(project.id, plain.ref, TaskUpdate(type="nope"))
+    assert [t.ref for t in human.list_tasks(project.id, task_type="bug")] == [bug.ref]
+    assert human.list_tasks(project.id, task_type=TaskType.DESIGN) == []
 
 
 def test_clear_parent(make_service: ServiceFactory, project: Project) -> None:

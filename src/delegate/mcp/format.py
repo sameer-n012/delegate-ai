@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from delegate.core import ProjectState, ProjectStatus, Task, TaskDetail, TaskSummary
+from delegate.core import ProjectState, ProjectStatus, Task, TaskDetail, TaskSummary, TaskType
 
 
 def summary_line(t: TaskSummary) -> str:
-    """``DLG-4 [P1 todo] Title (@agent) (parent DLG-1)``."""
-    parts = [f"{t.ref} [{t.priority} {t.status.value}] {t.title}"]
+    """``DLG-4 [P1 todo bug] Title (@agent) (parent DLG-1)``. The type is left out when unknown."""
+    kind = "" if t.type is TaskType.UNKNOWN else f" {t.type.value}"
+    parts = [f"{t.ref} [{t.priority} {t.status.value}{kind}] {t.title}"]
     if t.assignee:
         parts.append(f"(@{t.assignee})")
     if t.parent:
@@ -64,7 +65,8 @@ def task_detail(d: TaskDetail) -> str:
     t = d.task
     lines = [
         f"{t.ref}: {t.title}",
-        f"status={t.status.value} priority={t.priority} ready={'yes' if d.ready else 'no'} "
+        f"status={t.status.value} priority={t.priority} type={t.type.value} "
+        f"ready={'yes' if d.ready else 'no'} "
         f"version={t.version}",
     ]
     if t.assignee:

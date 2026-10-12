@@ -61,6 +61,7 @@ from delegate.core.models import (
     Task,
     TaskDetail,
     TaskSummary,
+    TaskType,
 )
 
 # Status changes allowed through update_task() for agents. Entering in_progress
@@ -102,6 +103,7 @@ class NewTask(BaseModel):
     description: str = ""
     acceptance: str = ""
     priority: int | str = 2
+    type: TaskType | str = TaskType.UNKNOWN
     parent: str | None = None
     depends_on: list[str] = Field(default_factory=list[str])
     local_id: str | None = None
@@ -117,6 +119,7 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     acceptance: str | None = None
     priority: int | str | None = None
+    type: TaskType | str | None = None
     status: Status | None = None
     parent: str | None = None
     clear_parent: bool = False
@@ -460,6 +463,7 @@ class TaskService:
         statuses: Sequence[Status] | None = None,
         assignee: str | None = None,
         parent: str | None = None,
+        task_type: TaskType | str | None = None,
         ready_only: bool = False,
         query: str | None = None,
         include_closed: bool = False,
@@ -484,6 +488,9 @@ class TaskService:
         if parent is not None:
             where.append("t.parent_id = ?")
             params.append(self._row(parent, project_id)["id"])
+        if task_type is not None:
+            where.append("t.type = ?")
+            params.append(_parse_type(task_type).value)
         if query:
             where.append("(t.title LIKE ? ESCAPE '\\' OR t.description LIKE ? ESCAPE '\\')")
             like = f"%{_escape_like(query)}%"
@@ -610,6 +617,7 @@ class TaskService:
                     priority = Priority.parse(item.priority)
                 except ValueError as exc:
                     raise ValidationError(str(exc)) from exc
+                task_type = _parse_type(item.type)
 
                 parent_id: int | None = None
                 if item.parent:
@@ -625,8 +633,8 @@ class TaskService:
                 now = self._now()
                 cur = self.conn.execute(
                     """INSERT INTO tasks (project_id, seq, parent_id, title, description, acceptance,
-                         priority, created_by, created_at, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                         priority, type, created_by, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         project_id,
                         seq,
@@ -635,6 +643,7 @@ class TaskService:
                         item.description,
                         item.acceptance,
                         int(priority),
+                        task_type.value,
                         self.actor.id,
                         now,
                         now,
@@ -765,6 +774,11 @@ class TaskService:
                 if priority != row["priority"]:
                     sets["priority"] = priority
                     changed.append("priority")
+            if update.type is not None:
+                task_type = _parse_type(update.type)
+                if task_type.value != row["type"]:
+                    sets["type"] = task_type.value
+                    changed.append("type")
             if update.clear_parent and update.parent is not None:
                 raise ValidationError("Use parent or clear_parent, not both")
             if update.parent == "":
@@ -1075,10 +1089,20 @@ def _project(row: sqlite3.Row) -> Project:
     )
 
 
+def _parse_type(value: TaskType | str) -> TaskType:
+    """Parse a task type (any case). Raises ValidationError with the allowed values."""
+    try:
+        return TaskType(str(value).strip().lower())
+    except ValueError as exc:
+        allowed = ", ".join(t.value for t in TaskType)
+        raise ValidationError(f"Invalid task type {value!r}; use one of {allowed}") from exc
+
+
 def _summary(row: sqlite3.Row) -> TaskSummary:
     return TaskSummary(
         ref=_ref(row),
         title=row["title"],
+        type=TaskType(row["type"]),
         status=Status(row["status"]),
         priority=Priority(row["priority"]),
         assignee=row["assignee"],
@@ -1099,6 +1123,7 @@ def _task(row: sqlite3.Row) -> Task:
         title=row["title"],
         description=row["description"],
         acceptance=row["acceptance"],
+        type=TaskType(row["type"]),
         status=Status(row["status"]),
         priority=Priority(row["priority"]),
         assignee=row["assignee"],

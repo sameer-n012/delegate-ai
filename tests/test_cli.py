@@ -45,7 +45,8 @@ def test_add_list_show() -> None:
     out = run("add", "First task", "--desc", "details", "-p", "P1", "--acceptance", "works").stdout
     ref = out.split()[0]
     assert "P1" in out and "todo" in out
-    run("add", "Second", "--dep", ref, "--parent", ref)
+    assert run_json("show", ref)["task"]["type"] == "unknown"
+    run("add", "Second", "--dep", ref, "--parent", ref, "--type", "feature")
     listing = run("list").stdout
     assert "[ready]" in listing and "(parent" in listing
     assert len(listing.strip().splitlines()) == 2
@@ -122,6 +123,10 @@ def test_update_status_and_deps() -> None:
     assert run_json("update", b, "--rm-dep", a, "--status", "blocked")["status"] == "blocked"
     version = run_json("update", b, "--desc", "d")["version"]
     run("update", b, "--title", "stale", "--expect-version", str(version - 1), code=1)
+    assert run_json("update", b, "--type", "bug")["type"] == "bug"
+    assert "bug" in run("list", "-t", "bug").stdout
+    assert "No tasks." in run("list", "-t", "docs").stdout
+    run("update", b, "--type", "epic", code=2)
     assert run_json("update", b, "--parent", a)["parent"] == a
     run("update", b, "--parent", "", code=2)
     run("update", b, "--parent", a, "--clear-parent", code=2)

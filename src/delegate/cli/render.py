@@ -13,6 +13,7 @@ from delegate.core import (
     Task,
     TaskDetail,
     TaskSummary,
+    TaskType,
 )
 
 _COUNT_ORDER = ("todo", "in_progress", "review", "blocked", "done", "cancelled")
@@ -24,7 +25,9 @@ def _hhmm(iso: str) -> str:
 
 
 def summary_line(t: TaskSummary) -> str:
-    parts = [f"{t.ref:<8}", str(t.priority), f"{t.status.value:<11}"]
+    # The type column stays blank for unknown so typed tasks stand out.
+    kind = "" if t.type is TaskType.UNKNOWN else t.type.value
+    parts = [f"{t.ref:<8}", str(t.priority), f"{t.status.value:<11}", f"{kind:<8}"]
     if t.ready:
         parts.append("[ready]")
     parts.append(t.title)
@@ -86,7 +89,7 @@ def detail_text(d: TaskDetail) -> str:
     t = d.task
     head = f"{t.ref} {t.priority} {t.status.value}" + (" [ready]" if d.ready else "")
     lines = [f"{head}  {t.title}"]
-    fields = [f"version: {t.version}"]
+    fields = [f"type: {t.type.value}", f"version: {t.version}"]
     if t.assignee:
         fields.append(f"assignee: {t.assignee}")
     if t.lease_expires_at:

@@ -4,7 +4,7 @@
 {% set base = "/p/" ~ key ~ "/t/" ~ t.ref %}
 <article class="detail" data-ref="{{ t.ref }}" data-url="{{ base }}">
   <header>
-    <div class="row1"><b class="ref">{{ t.ref }}</b>{{ m.status_pill(t.status) }}{{ m.prio(t.priority) }}{{ m.who(t.assignee) }}
+    <div class="row1">{{ m.type_icon(t.type) }}<b class="ref">{{ t.ref }}</b>{{ m.status_pill(t.status) }}{{ m.prio(t.priority) }}{{ m.who(t.assignee) }}
       {% if t.status.value == 'todo' %}{% if d.ready %}<span class="mark ready">ready</span>{% else %}<span class="mark wait">waiting on deps</span>{% endif %}{% endif %}</div>
     <h2>{{ t.title }}</h2>
     <div class="meta">Created {{ t.created_at|ago(now) }} by {{ t.created_by }}. Updated {{ t.updated_at|ago(now) }}.
@@ -20,6 +20,10 @@
     <label>Priority
       <select name="priority" hx-post="{{ base }}/priority" hx-target="#drawer-body" hx-trigger="change">
         {% for p in ['P0','P1','P2','P3'] %}<option{% if p == 'P' ~ t.priority.value %} selected{% endif %}>{{ p }}</option>{% endfor %}
+      </select></label>
+    <label>Type
+      <select name="type" hx-post="{{ base }}/type" hx-target="#drawer-body" hx-trigger="change">
+        {% for k in TASK_TYPES %}<option value="{{ k }}"{% if k == t.type.value %} selected{% endif %}>{{ TYPE_LABELS[k] }}</option>{% endfor %}
       </select></label>
   </div>
 

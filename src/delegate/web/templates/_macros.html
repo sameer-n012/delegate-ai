@@ -1,5 +1,7 @@
 {% macro prio(p) %}<span class="prio p{{ p.value }}" title="Priority P{{ p.value }}">P{{ p.value }}</span>{% endmacro %}
 
+{% macro type_icon(tt) %}<span class="ttype tt-{{ tt.value }}" role="img" aria-label="Type: {{ TYPE_LABELS[tt.value] }}" title="{{ TYPE_LABELS[tt.value] }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="{{ TYPE_ICONS[tt.value] }}"/></svg></span>{% endmacro %}
+
 {% macro who(name) %}{% if name %}<span class="chip {{ 'human' if name == 'human' else 'agent' }}">{% if name != 'human' %}🤖 {% endif %}{{ name }}</span>{% endif %}{% endmacro %}
 
 {% macro status_pill(s) %}<span class="pill s-{{ s.value }}">{{ COLUMN_LABELS[s.value] }}</span>{% endmacro %}

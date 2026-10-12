@@ -22,6 +22,7 @@ from delegate.core import (
     NewTask,
     Project,
     Status,
+    TaskType,
     TaskUpdate,
     ValidationError,
     gitinfo,
@@ -92,6 +93,7 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
         status: list[str] | None = None,
         assignee: str | None = None,
         parent: str | None = None,
+        type: TaskType | None = None,
         ready_only: bool = False,
         query: str | None = None,
         include_closed: bool = False,
@@ -100,7 +102,8 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
     ) -> str:
         """List tasks, one line each. Closed tasks are hidden unless include_closed or a
         closed status is given. status: todo, in_progress, review, blocked, done, cancelled.
-        parent is a task ref like DLG-1. query matches title and description."""
+        parent is a task ref like DLG-1. type filters by task type. query matches title
+        and description."""
 
         def run() -> str:
             try:
@@ -113,6 +116,7 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
                     statuses=statuses,
                     assignee=assignee,
                     parent=parent,
+                    task_type=type,
                     ready_only=ready_only,
                     query=query,
                     include_closed=include_closed,
@@ -131,6 +135,7 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
     @server.tool()
     def create_tasks(tasks: list[NewTask], project: str | None = None) -> str:
         """Create tasks in one atomic batch. Priority is P0 (highest) to P3, default P2.
+        type: feature, bug, refactor, test, docs, design, research, chore (default unknown).
         Give an item a `local_id` (a word, not a ref) to let later items in the same batch
         use it in `parent` or `depends_on`. Those fields also accept existing refs (DLG-4)."""
 
@@ -167,6 +172,7 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
         description: str | None = None,
         acceptance: str | None = None,
         priority: str | None = None,
+        type: TaskType | None = None,
         status: Status | None = None,
         parent: str | None = None,
         clear_parent: bool = False,
@@ -186,6 +192,7 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
                 description=description,
                 acceptance=acceptance,
                 priority=priority,
+                type=type,
                 status=status,
                 parent=parent,
                 clear_parent=clear_parent,

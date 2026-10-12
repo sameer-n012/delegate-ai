@@ -32,6 +32,7 @@ from delegate.core.models import (
     Task,
     TaskDetail,
     TaskSummary,
+    TaskType,
 )
 from delegate.core.service import NewTask, TaskService, TaskUpdate, new_agent_id
 
@@ -65,6 +66,7 @@ __all__ = [
     "TaskDetail",
     "TaskService",
     "TaskSummary",
+    "TaskType",
     "TaskUpdate",
     "ValidationError",
     "connect",

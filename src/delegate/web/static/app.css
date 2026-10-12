@@ -111,6 +111,15 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 .prio.p0 { background: var(--p0); border-color: var(--p0); color: #fff; }
 .prio.p1 { color: var(--p1); border-width: 2px; padding: 0 4px; }
 .prio.p3 { color: var(--p3); border-style: dashed; }
+/* Task type icon. Unknown is faint so typed tasks stand out. */
+.ttype { display: inline-flex; color: var(--tt, var(--muted)); flex: none; }
+.ttype svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tt-feature { --tt: var(--accent); }
+.tt-bug { --tt: var(--blocked); }
+.tt-design { --tt: var(--review); }
+.tt-docs { --tt: var(--p1); }
+.tt-test { --tt: var(--done); }
+.tt-unknown { --tt: var(--p3); }
 .chip { font-size: 12px; padding: 0 6px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); color: var(--text); }
 .chip.human { color: var(--accent); }
 .mark { font-size: 11px; padding: 0 5px; border-radius: 3px; margin-left: auto; }

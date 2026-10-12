@@ -49,6 +49,34 @@ STATE_BANNERS: dict[str, str] = {
     "inactive": "This project is inactive",
     "deleted": "This project is deleted and hidden from the project list",
 }
+TYPE_LABELS: dict[str, str] = {
+    "feature": "Feature",
+    "bug": "Bug",
+    "refactor": "Refactor",
+    "test": "Test",
+    "docs": "Docs",
+    "design": "Design",
+    "research": "Research",
+    "chore": "Chore",
+    "unknown": "Unknown",
+}
+# SVG path data for task type icons: 24x24 viewBox, drawn as 2px round strokes in
+# currentColor. A zero-length segment ("h.01") renders as a dot.
+TYPE_ICONS: dict[str, str] = {
+    "feature": "M12 3l2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4l-5.3 3 1.2-6-4.5-4.1 6-.7z",
+    "bug": "M8 10h8v4a4 4 0 0 1-8 0z M9 10a3 3 0 0 1 6 0 M12 10v8 M4 14h4 M16 14h4"
+    " M5 9l3 2 M19 9l-3 2 M5 20l3-2 M19 20l-3-2",
+    "refactor": "M4 10a8 8 0 0 1 14-4l2 2 M20 4v4h-4 M20 14a8 8 0 0 1-14 4l-2-2 M4 20v-4h4",
+    "test": "M9 3h6 M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3 M7.5 15h9",
+    "docs": "M6 3h8l4 4v14H6z M14 3v4h4 M9 12h6 M9 16h6",
+    "design": "M12 3a9 9 0 1 0 0 18c1.4 0 2-.9 2-2 0-1.4-1-1.8 0-3 .8-1 2-1 3-1a4 4 0 0 0 4-4"
+    "c0-4.4-4-8-9-8z M7.5 12h.01 M9.5 7.5h.01 M14.5 7.5h.01",
+    "research": "M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z M21 21l-5-5",
+    "chore": "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9"
+    "l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z",
+    "unknown": "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.6 9.5a2.5 2.5 0 1 1 3.4 2.3"
+    "c-.6.3-1 .8-1 1.5v.4 M12 16.5h.01",
+}
 
 
 def parse_ts(value: str) -> datetime | None:

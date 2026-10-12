@@ -45,6 +45,7 @@ from delegate.core import (
     Settings,
     Status,
     TaskService,
+    TaskType,
     TaskUpdate,
     ValidationError,
     connect,
@@ -134,6 +135,9 @@ def _make_templates() -> Jinja2Templates:
         "PROJECT_STATES": [s.value for s in ProjectState],
         "NOTE_KINDS": [k.value for k in NoteKind if k is not NoteKind.SUMMARY],
         "LINK_KINDS": [k.value for k in LinkKind],
+        "TASK_TYPES": [t.value for t in TaskType],
+        "TYPE_LABELS": views.TYPE_LABELS,
+        "TYPE_ICONS": views.TYPE_ICONS,
     }
     env.globals.update(globals_)  # pyright: ignore[reportUnknownMemberType]
     return templates
@@ -343,6 +347,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         svc.update_task(project.id, ref, TaskUpdate(priority=form.get("priority", "")))
         return drawer_response(request, svc, key, ref, changed=True)
 
+    @app.post("/p/{key}/t/{ref}/type", response_class=HTMLResponse)
+    def set_type(request: Request, key: str, ref: str, svc: Svc, form: Form) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
+        project = _project(svc, key)
+        svc.update_task(project.id, ref, TaskUpdate(type=form.get("type", "")))
+        return drawer_response(request, svc, key, ref, changed=True)
+
     @app.post("/p/{key}/t/{ref}/edit", response_class=HTMLResponse)
     def edit_task(request: Request, key: str, ref: str, svc: Svc, form: Form) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
         project = _project(svc, key)
@@ -382,6 +392,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     title=form.get("title", "").strip() or "",
                     description=form.get("description", ""),
                     priority=form.get("priority") or 2,
+                    type=form.get("type") or TaskType.UNKNOWN,
                     parent=form.get("parent", "").strip() or None,
                     depends_on=deps,
                 )
@@ -436,6 +447,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         status: Annotated[list[Status] | None, Query()] = None,
         assignee: str | None = None,
         parent: str | None = None,
+        type: TaskType | None = None,
         ready_only: bool = False,
         query: str | None = None,
         include_closed: bool = False,
@@ -446,6 +458,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             statuses=status,
             assignee=assignee,
             parent=parent,
+            task_type=type,
             ready_only=ready_only,
             query=query,
             include_closed=include_closed,

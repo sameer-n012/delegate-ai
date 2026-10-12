@@ -7,7 +7,7 @@
       {% for t in col.tasks %}
       <a class="card s-{{ t.status.value }}" href="/p/{{ project.key }}/t/{{ t.ref }}"
          hx-get="/p/{{ project.key }}/t/{{ t.ref }}" hx-target="#drawer-body" hx-push-url="true" data-ref="{{ t.ref }}">
-        <div class="row1"><b class="ref">{{ t.ref }}</b>{{ m.prio(t.priority) }}
+        <div class="row1">{{ m.type_icon(t.type) }}<b class="ref">{{ t.ref }}</b>{{ m.prio(t.priority) }}
           {% if t.status.value == 'todo' %}{% if t.ready %}<span class="mark ready">ready</span>{% else %}<span class="mark wait">waiting on deps</span>{% endif %}{% endif %}
         </div>
         <div class="title">{{ t.title }}</div>

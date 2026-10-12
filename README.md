@@ -4,7 +4,7 @@ Delegate is a task tracker for coding agents. Agents use it through an MCP serve
 You monitor and steer their work in a local web dashboard.
 
 - Agents claim tasks. A claim has a lease. If an agent stops, the lease expires and the task goes back to the queue.
-- Tasks have subtasks, dependencies, priorities (P0–P3), notes, and links (commits, PRs, files, URLs).
+- Tasks have subtasks, dependencies, priorities (P0–P3), types, notes, and links (commits, PRs, files, URLs).
 - Many agents can work in parallel. Claims are atomic.
 - All projects share one SQLite database at `~/.delegate/delegate.db`.
 
@@ -68,7 +68,8 @@ delegate serve            # http://127.0.0.1:3140
 ```
 
 The dashboard shows a board for each project, task details, active agents, and a live activity feed.
-You can create tasks, change status and priority, and add notes. Agents see your notes.
+You can create tasks, change status, priority, and type, and add notes. Agents see your notes.
+Each card shows an icon for its task type.
 The home page filters projects by state and searches by name, path, or key. You can change a project's state from its card or from the board header.
 
 ## Rules
@@ -78,6 +79,7 @@ The home page filters projects by state and searches by name, path, or key. You 
 - Only the holder can change an `in_progress` task. All agents can add notes.
 - Each write by an agent extends all of its leases. The default lease is 15 minutes.
 - Dependency cycles and parent cycles are rejected.
+- Each task has a type: `feature`, `bug`, `refactor`, `test`, `docs`, `design`, `research`, `chore`, or `unknown`. If you do not give a type, it is `unknown`. Set it with `type` (MCP) or `--type` (CLI). Filter lists with the same option.
 - `update_task` accepts `expected_version`. If another actor changed the task first, the update fails.
 
 ## Configuration

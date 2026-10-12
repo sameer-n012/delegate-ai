@@ -99,4 +99,9 @@ MIGRATIONS: list[str] = [
         CHECK (state IN ('not_started','in_progress','complete','inactive','deleted'));
     UPDATE projects SET state = 'in_progress';
     """,
+    # 3: task type. No CHECK constraint: the TaskType enum validates on write, and adding
+    # a type later would otherwise need a full table rebuild.
+    """
+    ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'unknown';
+    """,
 ]
