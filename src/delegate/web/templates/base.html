@@ -10,7 +10,7 @@
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
   <script src="/static/app.js" defer></script>
 </head>
-<body{% if project %} data-project="{{ project.key }}"{% endif %}>
+<body class="{% block body_class %}{% endblock %}"{% if project %} data-project="{{ project.key }}"{% endif %}>
 <header class="top">
   <a class="brand" href="/">delegate</a>
   <label class="switch">

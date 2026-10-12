@@ -190,7 +190,25 @@ form.inline input { flex: 1; min-width: 0; }
 .toast { padding: 9px 12px; border-radius: 6px; background: var(--panel); border: 1px solid var(--blocked); border-left-width: 4px; box-shadow: var(--shadow); }
 .toast b { color: var(--blocked); margin-right: 6px; }
 
-@media (max-width: 1000px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1000px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .cards { max-height: 70vh; overflow-y: auto; } /* page scrolls; long columns still scroll alone */
+}
+/* Wide screens: the board page fills the viewport and each column scrolls on its own (DLG-25).
+   The main area scrolls as a whole only when the forms above the board leave it too little room. */
+@media (min-width: 1001px) {
+  body.boardpage { height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+  .boardpage .top { flex: none; }
+  .boardpage .layout { flex: 1; min-height: 0; align-items: stretch; }
+  .boardpage .main { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
+  .boardpage .main > * { flex: none; }
+  .boardpage .main > .board-wrap { flex: 1 0 320px; min-height: 320px; display: flex; flex-direction: column; }
+  .boardpage .columns { flex: 1; min-height: 0; }
+  .boardpage .col { display: flex; flex-direction: column; min-height: 0; }
+  .boardpage .col h2 { flex: none; }
+  .boardpage .cards { flex: 1; min-height: 0; overflow-y: auto; }
+  .boardpage .side { min-height: 0; overflow-y: auto; }
+}
 @media (prefers-reduced-motion: reduce) {
   .drawer, .drawer[data-open="true"] { transition: none; }
   .dot { animation: none !important; }
