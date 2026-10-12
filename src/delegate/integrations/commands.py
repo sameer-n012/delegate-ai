@@ -14,9 +14,11 @@ from typing import Annotated, Any, cast
 
 import typer
 
+from delegate import __version__
 from delegate.integrations import hooks as hook_logic
-from delegate.integrations.setup import init_repo
-from delegate.core import ANONYMOUS, ProjectState
+from delegate.integrations.setup import InitOptions, InitResult, apply_setup, setup_info
+from delegate.core import ANONYMOUS, Project, ProjectState
+from delegate.core.gitinfo import detect
 from delegate.runtime import open_runtime, resolve_actor
 
 GIT_HOOK_ACTOR = "git#hook"
@@ -43,27 +45,53 @@ def init_command(
     ] = False,
     no_hooks: Annotated[bool, typer.Option("--no-hooks", help="Skip Claude Code hooks.")] = False,
     no_git_hook: Annotated[bool, typer.Option("--no-git-hook", help="Skip the git post-commit hook.")] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Run again on a repo that is already set up, with these options.")
+    ] = False,
 ) -> None:
-    """Set up this repo for agents: instructions, MCP config, Claude Code hooks, git hook."""
+    """Set up this repo for agents: instructions, MCP config, Claude Code hooks, git hook.
+
+    Does nothing on a repo that is already set up (by any version). Use `delegate project
+    update` to refresh it, or `--force` to set it up again with new options.
+    """
     cmd = shlex.split(command)
     if not cmd:
         raise typer.BadParameter("--command must not be empty")
+    options = InitOptions(
+        command=cmd,
+        instructions_file=instructions_file,
+        mcp=not no_mcp,
+        hooks=not no_hooks,
+        git_hook=not no_git_hook,
+    )
     rt = open_runtime()
     try:
         cwd = Path.cwd()
         project = rt.service.ensure_project(cwd, key=key)
-        result = init_repo(
-            cwd,
-            project,
-            command=cmd,
-            instructions_file=instructions_file,
-            mcp=not no_mcp,
-            hooks=not no_hooks,
-            git_hook=not no_git_hook,
-        )
+        info = setup_info(rt.service, project, detect(cwd).root)
+        if info.is_set_up and not force:
+            version = info.recorded.version if info.recorded else "an older version"
+            typer.echo(
+                f"Project {project.name} ({project.key}) is already set up (delegate {version}). "
+                "Nothing changed."
+            )
+            typer.echo(
+                "Run `delegate project update` to refresh it, or `delegate init --force` "
+                "to set it up again with new options."
+            )
+            return
+        result = apply_setup(rt.service, cwd, project, options)
     finally:
         rt.close()
-    typer.echo(f"Project {project.name} ({project.key}) at {result.root} [{project.state.value}]")
+    print_setup_result(project, result)
+
+
+def print_setup_result(project: Project, result: InitResult) -> None:
+    """Print which files a setup run changed, and how to start a project that is not started."""
+    typer.echo(
+        f"Project {project.name} ({project.key}) at {result.root} [{project.state.value}], "
+        f"delegate {__version__}"
+    )
     for name in result.changed:
         typer.echo(f"  updated   {name}")
     for name in result.unchanged:

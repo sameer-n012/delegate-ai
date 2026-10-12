@@ -13,7 +13,12 @@ from delegate.integrations import hooks
 from delegate.integrations.setup import (
     BEGIN_MARK,
     END_MARK,
+    InitOptions,
+    apply_setup,
+    detect_options,
     init_repo,
+    is_newer,
+    setup_info,
     upsert_marked_block,
 )
 
@@ -50,8 +55,8 @@ def test_init_repo_is_idempotent_and_merges(make_service: ServiceFactory, tmp_pa
     (repo / ".claude" / "settings.json").write_text(json.dumps(existing))
     project = make_service("human").ensure_project(repo)
 
-    first = init_repo(repo, project, command=["delegate"])
-    second = init_repo(repo, project, command=["delegate"])
+    first = init_repo(repo, project, InitOptions())
+    second = init_repo(repo, project, InitOptions())
 
     claude_md = (repo / "CLAUDE.md").read_text()
     assert claude_md.startswith("# Existing rules") and claude_md.count(BEGIN_MARK) == 1
@@ -138,3 +143,113 @@ def test_post_commit_hook_uses_hook_identity(
     assert result.exit_code == 0, result.output
     assert human.get_task_detail(f"{project.key}-1").links[0].kind == "commit"
     assert human.events_recent(project_id=project.id, limit=1)[0].agent == "git#hook"
+
+
+# ---------------------------------------------------------------- setup versioning
+
+
+def test_version_matches_pyproject() -> None:
+    """``delegate.__version__`` is the runtime source of truth; it must match pyproject.toml."""
+    import tomllib
+
+    from delegate import __version__
+
+    pyproject = Path(__file__).parent.parent / "pyproject.toml"
+    assert tomllib.loads(pyproject.read_text())["project"]["version"] == __version__
+
+
+@pytest.mark.parametrize(
+    ("installed", "recorded", "newer"),
+    [
+        ("0.2.0", None, True),
+        ("0.2.0", "0.1.0", True),
+        ("0.2.0", "0.2.0", False),
+        ("0.2", "0.2.0", False),
+        ("0.10.0", "0.9.0", True),
+        ("0.1.0", "0.2.0", False),
+        ("0.2.0-dev", "0.2.0", True),  # not orderable: any difference counts
+    ],
+)
+def test_is_newer(installed: str, recorded: str | None, newer: bool) -> None:
+    assert is_newer(installed, recorded) is newer
+
+
+def _repo(tmp_path: Path, name: str = "proj") -> Path:
+    repo = tmp_path / name
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    return repo
+
+
+def test_detect_options_from_old_setup(make_service: ServiceFactory, tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    assert detect_options(repo) is None
+    project = make_service("human").ensure_project(repo)
+    custom = InitOptions(
+        command=["uv", "run", "--project", "/src/d", "delegate"], instructions_file="AGENTS.md", hooks=False
+    )
+    init_repo(repo, project, custom)
+    assert detect_options(repo) == custom
+
+
+def test_setup_record_and_update_available(make_service: ServiceFactory, tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    svc = make_service("human")
+    project = svc.ensure_project(repo)
+    assert not setup_info(svc, project, repo).is_set_up
+    # An old setup: files exist but no record.
+    init_repo(repo, project, InitOptions(git_hook=False))
+    old = setup_info(svc, project, repo)
+    assert old.is_set_up and old.inferred and old.recorded is None and old.update_available
+
+    apply_setup(svc, repo, project, InitOptions(git_hook=False))
+    info = setup_info(svc, project, repo)
+    assert info.recorded is not None and not info.inferred and not info.update_available
+    assert info.options == InitOptions(git_hook=False)
+    svc.record_setup(project.id, "0.0.1", InitOptions(git_hook=False).model_dump())
+    assert setup_info(svc, project, repo).update_available
+    assert svc.events_recent(project_id=project.id, limit=1)[0].type == "project_setup"
+
+
+def test_init_noop_update_and_info_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from typer.testing import CliRunner
+
+    from delegate import __version__
+    from delegate.cli.main import app
+
+    repo = _repo(tmp_path, "clirepo")
+    monkeypatch.setenv("DELEGATE_DB", str(tmp_path / "cli.db"))
+    monkeypatch.setenv("DELEGATE_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("DELEGATE_AGENT", raising=False)
+    monkeypatch.delenv("DELEGATE_PROJECT", raising=False)
+    monkeypatch.chdir(repo)
+    runner = CliRunner()
+
+    def run(*args: str, code: int = 0) -> str:
+        result = runner.invoke(app, list(args))
+        assert result.exit_code == code, result.output
+        return result.output
+
+    assert json.loads(run("--json", "project", "info"))["set_up"] is False
+    run("project", "update", code=2)  # not set up yet
+    assert "updated   CLAUDE.md" in run("init", "--command", "uv run delegate", "--no-git-hook")
+
+    # Second init is a no-op, even with different options.
+    (repo / "CLAUDE.md").write_text("edited by hand\n")
+    assert "already set up" in run("init", "--file", "AGENTS.md")
+    assert (repo / "CLAUDE.md").read_text() == "edited by hand\n" and not (repo / "AGENTS.md").exists()
+
+    info = json.loads(run("--json", "project", "info"))
+    assert info["setup_version"] == __version__ and info["update_available"] is False
+    assert info["options"]["command"] == ["uv", "run", "delegate"] and info["options"]["git_hook"] is False
+
+    # update reuses the stored options and restores the block.
+    out = json.loads(run("--json", "project", "update"))
+    assert out["to_version"] == __version__ and "CLAUDE.md" in out["changed"]
+    assert BEGIN_MARK in (repo / "CLAUDE.md").read_text()
+    assert json.loads((repo / ".mcp.json").read_text())["mcpServers"]["delegate"]["command"] == "uv"
+
+    # --force re-runs with the new options and records them.
+    run("init", "--force", "--file", "AGENTS.md", "--no-git-hook")
+    assert BEGIN_MARK in (repo / "AGENTS.md").read_text()
+    assert "file=AGENTS.md" in run("project", "info")

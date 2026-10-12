@@ -1,8 +1,11 @@
 """Compact plain-text renderers for CLI output. Agents read this, so keep it short."""
 
 import json
+import shlex
 from datetime import datetime
 
+from delegate import __version__
+from delegate.integrations.setup import InitResult, SetupInfo
 from delegate.core import (
     Agent,
     Event,
@@ -128,6 +131,38 @@ def project_line(p: Project) -> str:
     return f"{p.key}  {p.state.value:<11}  {p.name}  {p.root_path}" + (
         f"  {p.git_remote}" if p.git_remote else ""
     )
+
+
+def setup_info_text(info: SetupInfo) -> str:
+    p = info.project
+    lines = [f"{p.key} ({p.name}) at {info.root} [{p.state.value}]"]
+    lines.append(f"installed: delegate {info.installed_version}")
+    if info.options is None:
+        lines.append("setup: not set up (run `delegate init`)")
+        return "\n".join(lines)
+    if info.recorded:
+        lines.append(f"setup: delegate {info.recorded.version} on {info.recorded.updated_at}")
+    else:
+        lines.append("setup: older than 0.2.0 (no record; options inferred from the repo files)")
+    o = info.options
+    steps = [name for name, on in (("mcp", o.mcp), ("hooks", o.hooks), ("git-hook", o.git_hook)) if on]
+    lines.append(
+        f"options: command={shlex.join(o.command)!r} file={o.instructions_file} "
+        f"steps={','.join(steps) or 'none'}"
+    )
+    if info.update_available:
+        lines.append(f"update available: {info.installed_version}. Run `delegate project update`.")
+    else:
+        lines.append("up to date")
+    return "\n".join(lines)
+
+
+def setup_update_text(project: Project, previous: str | None, result: InitResult) -> str:
+    from_version = previous or "an untracked version"
+    lines = [f"{project.key}: updated repo files from delegate {from_version} to {__version__}"]
+    lines += [f"  updated   {name}" for name in result.changed]
+    lines += [f"  unchanged {name}" for name in result.unchanged]
+    return "\n".join(lines)
 
 
 def agent_line(a: Agent) -> str:

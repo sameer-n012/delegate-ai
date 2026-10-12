@@ -104,4 +104,12 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE tasks ADD COLUMN type TEXT NOT NULL DEFAULT 'unknown';
     """,
+    # 4: repo setup record, written by `delegate init` and `delegate project update`.
+    # NULL means the repo was never set up, or was set up before this was tracked.
+    # setup_options is a JSON object owned by delegate.integrations.
+    """
+    ALTER TABLE projects ADD COLUMN setup_version TEXT;
+    ALTER TABLE projects ADD COLUMN setup_options TEXT;
+    ALTER TABLE projects ADD COLUMN setup_at TEXT;
+    """,
 ]

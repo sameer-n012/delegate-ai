@@ -37,6 +37,18 @@ This command:
 All steps are idempotent. They merge into existing files. Use `--no-mcp`, `--no-hooks`, or `--no-git-hook` to skip a step.
 If `delegate` is not on your PATH, give the full command: `delegate init --command "uv run --project ~/src/delegate-ai delegate"`.
 
+Delegate stores the version and options that set up each repo. If the repo is already set up (by any version), `delegate init` does nothing. To set it up again with different options, use `delegate init --force`.
+
+## Upgrade delegate
+
+1. Get the new code: `git pull` for an editable install, or `uv tool upgrade delegate`.
+2. The database upgrades itself when a new `delegate` process opens it.
+3. In each repo, run `delegate project info` to see the repo's setup version, the stored options, and whether an update is available.
+4. Run `delegate project update` to rewrite the repo files with the stored options. Repos set up before 0.2.0 have no stored options. For them, delegate reads the options from the existing files.
+5. Restart `delegate serve`, and run `/mcp` in open Claude Code sessions.
+
+Both commands take `--project KEY` to work on another project's repo, and `--json`.
+
 ## Agent workflow
 
 | Step | MCP tool | CLI |

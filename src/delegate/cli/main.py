@@ -2,6 +2,7 @@
 
 import functools
 import json
+import os
 import sys
 import time
 from collections.abc import Callable
@@ -13,8 +14,11 @@ import typer
 from pydantic import BaseModel, TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
 
+from delegate import __version__
 from delegate.cli import render
+from delegate.core.gitinfo import detect
 from delegate.integrations.commands import hook_app, init_command
+from delegate.integrations.setup import apply_setup, setup_info
 from delegate.core import (
     DelegateError,
     NewTask,
@@ -264,8 +268,52 @@ def projects(
     _emit(items, lambda: "\n".join(render.project_line(p) for p in items) or "No projects.")
 
 
-project_app = typer.Typer(help="Project lifecycle (humans only).", no_args_is_help=True)
+project_app = typer.Typer(
+    help="Project state (humans only) and repo setup.", no_args_is_help=True
+)
 app.add_typer(project_app, name="project")
+
+
+def _setup_root(st: State, project: Project) -> Path:
+    """The repo to inspect: the project's stored root if it was named, else the cwd's repo."""
+    if st.project_key or os.environ.get("DELEGATE_PROJECT"):
+        return Path(project.root_path)
+    return detect(Path.cwd()).root
+
+
+@project_app.command("info")
+@_guarded
+def project_info() -> None:
+    """Show the repo's delegate version and init options, and whether an update is available."""
+    st = _state()
+    project = st.project()
+    info = setup_info(st.rt().service, project, _setup_root(st, project))
+    _emit(info.to_json(), lambda: render.setup_info_text(info))
+
+
+@project_app.command("update")
+@_guarded
+def project_update() -> None:
+    """Refresh the repo files to the installed delegate version, with the stored init options."""
+    st = _state()
+    project = st.project()
+    root = _setup_root(st, project)
+    info = setup_info(st.rt().service, project, root)
+    if info.options is None:
+        raise ValidationError(f"{root} is not set up for delegate; run `delegate init` first")
+    previous = info.recorded.version if info.recorded else None
+    result = apply_setup(st.rt().service, root, project, info.options)
+    _emit(
+        {
+            "project": project.key,
+            "root": str(result.root),
+            "from_version": previous,
+            "to_version": __version__,
+            "changed": result.changed,
+            "unchanged": result.unchanged,
+        },
+        lambda: render.setup_update_text(project, previous, result),
+    )
 
 
 @project_app.command("state")

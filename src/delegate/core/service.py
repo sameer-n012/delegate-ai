@@ -23,7 +23,7 @@ import secrets
 import sqlite3
 from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -55,6 +55,7 @@ from delegate.core.models import (
     NoteKind,
     Priority,
     Project,
+    ProjectSetup,
     ProjectState,
     ProjectStatus,
     Status,
@@ -307,6 +308,44 @@ class TaskService:
             params.extend([like, like, like])
         sql = "SELECT * FROM projects WHERE " + " AND ".join(where) + " ORDER BY name"
         return [_project(r) for r in self.conn.execute(sql, params)]
+
+    def get_setup(self, project_id: int) -> ProjectSetup | None:
+        """The repo setup record, or None if the project has no record."""
+        row = self.conn.execute(
+            "SELECT setup_version, setup_options, setup_at FROM projects WHERE id = ?", (project_id,)
+        ).fetchone()
+        if row is None:
+            raise NotFoundError(f"Project {project_id} not found")
+        if row["setup_version"] is None:
+            return None
+        try:
+            options: object = json.loads(row["setup_options"] or "{}")
+        except json.JSONDecodeError:
+            options = {}  # A damaged record must not block `project info`; update rewrites it.
+        return ProjectSetup(
+            version=row["setup_version"],
+            options=cast(dict[str, Any], options) if isinstance(options, dict) else {},
+            updated_at=row["setup_at"],
+        )
+
+    def record_setup(
+        self, project_id: int, version: str, options: dict[str, Any]
+    ) -> ProjectSetup:
+        """Store the version and options that last wrote the repo files.
+
+        Like ``ensure_project``, this is setup bookkeeping, not a task write. It needs no
+        identity and is allowed in every project state.
+        """
+        with transaction(self.conn):
+            self._project_by_id(project_id)
+            self.conn.execute(
+                "UPDATE projects SET setup_version = ?, setup_options = ?, setup_at = ? WHERE id = ?",
+                (version, json.dumps(options, sort_keys=True), self._now(), project_id),
+            )
+            self._emit("project_setup", project_id, payload={"version": version})
+        setup = self.get_setup(project_id)
+        assert setup is not None
+        return setup
 
     def set_project_state(self, key_or_id: str | int, state: ProjectState | str) -> Project:
         """Change a project's lifecycle state. Humans only."""

@@ -1,4 +1,8 @@
-"""`delegate init`: wire a repo up for agents.
+"""`delegate init` and `delegate project update`: wire a repo up for agents.
+
+The delegate version and options that last wrote a repo's files are stored on the project
+(``TaskService.record_setup``). Repos set up before that was tracked have their options
+inferred from the files (``detect_options``).
 
 Each step is idempotent and merges into existing files instead of replacing them:
 
@@ -12,18 +16,136 @@ Each step is idempotent and merges into existing files instead of replacing them
 from __future__ import annotations
 
 import json
+import shlex
 import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from delegate.core import Project
+from pydantic import BaseModel, Field, ValidationError as PydanticValidationError
+
+from delegate import __version__
+from delegate.core import Project, ProjectSetup, TaskService
 from delegate.core.gitinfo import detect, run_git
 
 BEGIN_MARK = "<!-- delegate:begin -->"
 END_MARK = "<!-- delegate:end -->"
 HOOK_BEGIN = "# delegate:begin"
 HOOK_END = "# delegate:end"
+INSTRUCTION_FILES = ("CLAUDE.md", "AGENTS.md")
+"""Files searched for the instructions block when inferring options of an old setup."""
+
+
+class InitOptions(BaseModel):
+    """The options of ``delegate init``. Stored per project so ``project update`` can reuse them."""
+
+    command: list[str] = Field(default_factory=lambda: ["delegate"], min_length=1)
+    instructions_file: str = "CLAUDE.md"
+    mcp: bool = True
+    hooks: bool = True
+    git_hook: bool = True
+
+    @classmethod
+    def from_record(cls, data: dict[str, Any]) -> InitOptions | None:
+        """Parse stored options. Returns None if the record is damaged."""
+        try:
+            return cls.model_validate(data)
+        except PydanticValidationError:
+            return None
+
+
+def detect_options(root: Path) -> InitOptions | None:
+    """Infer init options from the files that ``delegate init`` wrote.
+
+    For repos set up before setup records existed. Returns None when no delegate file
+    is found, which means the repo was never set up.
+    """
+    instructions = next(
+        (
+            name
+            for name in INSTRUCTION_FILES
+            if (root / name).is_file() and BEGIN_MARK in (root / name).read_text(encoding="utf-8")
+        ),
+        None,
+    )
+    mcp_command = _mcp_command(root)
+    hook_command = _hook_command(root)
+    git_hook = _git_hook_installed(root)
+    if instructions is None and mcp_command is None and hook_command is None and not git_hook:
+        return None
+    return InitOptions(
+        command=mcp_command or hook_command or ["delegate"],
+        instructions_file=instructions or "CLAUDE.md",
+        mcp=mcp_command is not None,
+        hooks=hook_command is not None,
+        git_hook=git_hook,
+    )
+
+
+def _mcp_command(root: Path) -> list[str] | None:
+    """The delegate command from `.mcp.json` (its args end with ``mcp``), if present."""
+    try:
+        servers: object = _load_json_object(root / ".mcp.json").get("mcpServers", {})
+    except ValueError:
+        return None
+    entry: object = cast(dict[str, Any], servers).get("delegate") if isinstance(servers, dict) else None
+    if not isinstance(entry, dict):
+        return None
+    entry = cast(dict[str, Any], entry)
+    command: object = entry.get("command")
+    args: object = entry.get("args", [])
+    if not isinstance(command, str) or not isinstance(args, list):
+        return None
+    parts = [command, *map(str, cast(list[object], args))]
+    return parts[:-1] if parts[-1] == "mcp" and len(parts) > 1 else parts
+
+
+def _hook_command(root: Path) -> list[str] | None:
+    """The delegate command from the SessionStart hook in `.claude/settings.json`, if present."""
+    try:
+        hooks: object = _load_json_object(root / ".claude" / "settings.json").get("hooks", {})
+    except ValueError:
+        return None
+    if not isinstance(hooks, dict):
+        return None
+    for group in cast(list[object], cast(dict[str, Any], hooks).get("SessionStart", [])):
+        if not isinstance(group, dict):
+            continue
+        for hook in cast(list[object], cast(dict[str, Any], group).get("hooks", [])):
+            text = str(cast(dict[str, Any], hook).get("command", "")) if isinstance(hook, dict) else ""
+            suffix = " hook session-start"
+            if text.endswith(suffix):
+                return shlex.split(text.removesuffix(suffix)) or None
+    return None
+
+
+def _git_hook_installed(root: Path) -> bool:
+    hooks_dir = run_git(root, "rev-parse", "--path-format=absolute", "--git-path", "hooks")
+    if hooks_dir is None:
+        return False
+    hook = Path(hooks_dir) / "post-commit"
+    return hook.is_file() and HOOK_BEGIN in hook.read_text(encoding="utf-8")
+
+
+def parse_version(value: str) -> tuple[int, ...] | None:
+    """``"0.2.0"`` -> ``(0, 2, 0)``. Returns None for anything that is not dotted integers."""
+    try:
+        return tuple(int(part) for part in value.strip().split("."))
+    except ValueError:
+        return None
+
+
+def is_newer(installed: str, recorded: str | None) -> bool:
+    """True if ``installed`` is newer than ``recorded``. An unknown record counts as older."""
+    if recorded is None:
+        return True
+    a, b = parse_version(installed), parse_version(recorded)
+    if a is None or b is None:
+        # Cannot order them; any difference means the repo files may be stale.
+        return installed.strip() != recorded.strip()
+    # Pad so "0.2" and "0.2.0" compare equal.
+    width = max(len(a), len(b))
+    return a + (0,) * (width - len(a)) > b + (0,) * (width - len(b))
 
 
 def instructions_block(project: Project) -> str:
@@ -156,6 +278,68 @@ def install_git_hook(cwd: Path, command: list[str]) -> tuple[Path, bool] | None:
     return hook, new != old
 
 
+@dataclass(slots=True, frozen=True)
+class SetupInfo:
+    """What `delegate project info` shows. ``options`` are stored, else inferred from files."""
+
+    project: Project
+    root: Path
+    installed_version: str
+    recorded: ProjectSetup | None
+    options: InitOptions | None
+    inferred: bool
+    """True when ``options`` came from the repo files because there is no valid record."""
+
+    @property
+    def is_set_up(self) -> bool:
+        return self.options is not None
+
+    @property
+    def update_available(self) -> bool:
+        """True if the installed delegate is newer than the one that wrote the repo files."""
+        return self.is_set_up and is_newer(
+            self.installed_version, self.recorded.version if self.recorded else None
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "project": self.project.key,
+            "root": str(self.root),
+            "installed_version": self.installed_version,
+            "setup_version": self.recorded.version if self.recorded else None,
+            "setup_at": self.recorded.updated_at if self.recorded else None,
+            "options": self.options.model_dump() if self.options else None,
+            "options_inferred": self.inferred,
+            "set_up": self.is_set_up,
+            "update_available": self.update_available,
+        }
+
+
+def setup_info(service: TaskService, project: Project, root: Path) -> SetupInfo:
+    recorded = service.get_setup(project.id)
+    options = InitOptions.from_record(recorded.options) if recorded else None
+    inferred = options is None
+    if options is None:
+        options = detect_options(root)
+    return SetupInfo(
+        project=project,
+        root=root,
+        installed_version=__version__,
+        recorded=recorded,
+        options=options,
+        inferred=inferred and options is not None,
+    )
+
+
+def apply_setup(
+    service: TaskService, cwd: Path, project: Project, options: InitOptions
+) -> InitResult:
+    """Write the repo files with ``options`` and record them with the installed version."""
+    result = init_repo(cwd, project, options)
+    service.record_setup(project.id, __version__, options.model_dump())
+    return result
+
+
 @dataclass(slots=True)
 class InitResult:
     root: Path
@@ -163,36 +347,28 @@ class InitResult:
     unchanged: list[str] = field(default_factory=list[str])
 
 
-def init_repo(
-    cwd: Path,
-    project: Project,
-    *,
-    command: list[str],
-    instructions_file: str = "CLAUDE.md",
-    mcp: bool = True,
-    hooks: bool = True,
-    git_hook: bool = True,
-) -> InitResult:
-    """Run all setup steps for the repo containing ``cwd``."""
+def init_repo(cwd: Path, project: Project, options: InitOptions) -> InitResult:
+    """Run all setup steps for the repo containing ``cwd``. Each step is idempotent."""
     root = detect(cwd).root
     result = InitResult(root=root)
+    command = options.command
 
     def note(name: str, changed: bool) -> None:
         (result.changed if changed else result.unchanged).append(name)
 
-    doc = root / instructions_file
+    doc = root / options.instructions_file
     old = doc.read_text(encoding="utf-8") if doc.exists() else ""
     new = upsert_marked_block(old, instructions_block(project), BEGIN_MARK, END_MARK)
     if new != old:
         doc.write_text(new, encoding="utf-8")
-    note(instructions_file, new != old)
+    note(options.instructions_file, new != old)
 
-    if mcp:
+    if options.mcp:
         note(".mcp.json", write_mcp_config(root, command))
         note(".claude/settings.json (permissions)", allow_mcp_tools(root))
-    if hooks:
+    if options.hooks:
         note(".claude/settings.json (hooks)", write_claude_hooks(root, command))
-    if git_hook:
+    if options.git_hook:
         installed = install_git_hook(cwd, command)
         if installed is not None:
             note(str(installed[0]), installed[1])

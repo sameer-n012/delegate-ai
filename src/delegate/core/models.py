@@ -120,6 +120,16 @@ class Project(_Model):
     created_at: str
 
 
+class ProjectSetup(_Model):
+    """How a repo was last set up by ``delegate init`` or ``delegate project update``."""
+
+    version: str
+    """The delegate version that wrote the repo files."""
+    options: dict[str, Any]
+    """Init options as a JSON object. ``delegate.integrations.setup.InitOptions`` owns the shape."""
+    updated_at: str
+
+
 class Agent(_Model):
     id: str
     kind: str
