@@ -9,7 +9,7 @@ Each step is idempotent and merges into existing files instead of replacing them
 * instructions block in CLAUDE.md / AGENTS.md (between marker comments)
 * `.mcp.json` server entry (Claude Code project-scoped MCP config)
 * `.claude/settings.json` allow rule for the MCP tools, so Claude Code does not prompt
-* `.claude/settings.json` SessionStart and Stop hooks
+* `.claude/settings.json` SessionStart hook (and removal of the Stop hook of older versions)
 * git `post-commit` hook that links commits mentioning task refs
 """
 
@@ -216,23 +216,67 @@ def _hook_entry(command: list[str], sub: str) -> dict[str, Any]:
     return {"hooks": [{"type": "command", "command": " ".join([*command, "hook", sub])}]}
 
 
+def _remove_stop_hook(hooks: dict[str, Any]) -> bool:
+    """Remove the Stop hook that delegate < 0.2.1 wrote. Returns True if something was removed.
+
+    Other Stop hooks stay. Groups and the ``Stop`` key are removed only when they become empty.
+    """
+
+    def is_delegate_stop(entry: object) -> bool:
+        if not isinstance(entry, dict):
+            return False
+        return str(cast(dict[str, Any], entry).get("command", "")).endswith(" hook stop")
+
+    raw_groups: object = hooks.get("Stop")
+    if not isinstance(raw_groups, list):
+        return False
+    changed = False
+    kept_groups: list[object] = []
+    for group in cast(list[object], raw_groups):
+        if not isinstance(group, dict):
+            kept_groups.append(group)
+            continue
+        group = cast(dict[str, Any], group)
+        raw_entries: object = group.get("hooks")
+        if not isinstance(raw_entries, list):
+            kept_groups.append(group)
+            continue
+        entries = cast(list[object], raw_entries)
+        kept = [h for h in entries if not is_delegate_stop(h)]
+        if len(kept) == len(entries):
+            kept_groups.append(group)
+            continue
+        changed = True
+        if kept:
+            group["hooks"] = kept
+            kept_groups.append(group)
+    if not changed:
+        return False
+    if kept_groups:
+        hooks["Stop"] = kept_groups
+    else:
+        del hooks["Stop"]
+    return True
+
+
 def write_claude_hooks(root: Path, command: list[str]) -> bool:
-    """Add SessionStart and Stop hooks to `.claude/settings.json` without duplicating them."""
+    """Add the SessionStart hook to `.claude/settings.json` without duplicating it.
+
+    Also removes the delegate Stop hook of older versions. Returns True if the file changed.
+    """
     path = root / ".claude" / "settings.json"
     data = _load_json_object(path)
     hooks = cast(dict[str, Any], data.setdefault("hooks", {}))
-    changed = False
-    for event, sub in (("SessionStart", "session-start"), ("Stop", "stop")):
-        groups = cast(list[dict[str, Any]], hooks.setdefault(event, []))
-        marker = f"hook {sub}"
-        already = any(
-            marker in str(h.get("command", ""))
-            for g in groups
-            for h in cast(list[dict[str, Any]], g.get("hooks", []))
-        )
-        if not already:
-            groups.append(_hook_entry(command, sub))
-            changed = True
+    changed = _remove_stop_hook(hooks)
+    groups = cast(list[dict[str, Any]], hooks.setdefault("SessionStart", []))
+    already = any(
+        "hook session-start" in str(h.get("command", ""))
+        for g in groups
+        for h in cast(list[dict[str, Any]], g.get("hooks", []))
+    )
+    if not already:
+        groups.append(_hook_entry(command, "session-start"))
+        changed = True
     if changed:
         _write_json(path, data)
     return changed

@@ -1,11 +1,12 @@
 """Hook handlers. Each takes parsed input and returns the text/JSON to print.
 
-Claude Code hook contract (stdin JSON includes ``cwd``; Stop also has ``stop_hook_active``):
+Claude Code hook contract (stdin JSON includes ``cwd``):
 
 * SessionStart: plain stdout is added to the model's context.
-* Stop: ``{"decision": "block", "reason": ...}`` makes the agent continue once with
-  ``reason`` as its prompt. We block at most once (``stop_hook_active`` guard) so a
-  session can never get stuck.
+
+There is no Stop hook. It found the session's agent by ``cwd``, and subagents share the
+MCP agent id of their parent, so it flagged worker claims on the orchestrator. Leases
+expire on their own, so it was removed in 0.2.1.
 """
 
 from __future__ import annotations
@@ -13,9 +14,8 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
 
-from delegate.core import DelegateError, Project, ProjectState, Status, TaskService
+from delegate.core import DelegateError, Project, ProjectState, TaskService
 from delegate.core.gitinfo import GIT_TIMEOUT_S
 
 _REF_IN_TEXT = re.compile(r"\b([A-Z][A-Z0-9]{1,9})-(\d+)\b")
@@ -50,34 +50,6 @@ def session_start_context(service: TaskService, project: Project) -> str:
         "complete_task or release_task when you stop."
     )
     return "\n".join(lines)
-
-
-def stop_decision(
-    service: TaskService, project: Project, hook_input: dict[str, Any]
-) -> dict[str, str] | None:
-    """Ask the agent once to close out tasks held by agents running in this cwd."""
-    if hook_input.get("stop_hook_active"):
-        return None
-    cwd = str(hook_input.get("cwd") or "")
-    agent_ids = {a.id for a in service.list_agents(project_id=project.id) if a.cwd == cwd}
-    if not agent_ids:
-        return None
-    held = [
-        t
-        for t in service.list_tasks(project.id, statuses=[Status.IN_PROGRESS])
-        if t.assignee in agent_ids
-    ]
-    if not held:
-        return None
-    refs = ", ".join(f"{t.ref} ({t.title})" for t in held)
-    return {
-        "decision": "block",
-        "reason": (
-            f"You still hold delegate tasks: {refs}. Before stopping, for each one either "
-            "call complete_task with a summary and links, or release_task with a handoff note "
-            "(or add a progress note if you will continue later)."
-        ),
-    }
 
 
 def refs_in_message(message: str, project_key: str) -> list[str]:

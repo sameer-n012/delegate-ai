@@ -137,22 +137,14 @@ def session_start() -> None:
         typer.echo(f"delegate session-start hook failed: {exc}", err=True)
 
 
-@hook_app.command("stop")
+@hook_app.command("stop", hidden=True)
 def stop() -> None:
-    """Claude Code Stop: ask the agent once to complete or release tasks it still holds."""
-    data = _read_hook_input()
-    try:
-        rt = open_runtime()
-        try:
-            project = rt.project_for(_hook_cwd(data))
-            decision = hook_logic.stop_decision(rt.service, project, data)
-        finally:
-            rt.close()
-    except Exception as exc:  # hooks must not break the host tool; report and exit 0
-        typer.echo(f"delegate stop hook failed: {exc}", err=True)
-        return
-    if decision is not None:
-        typer.echo(json.dumps(decision))
+    """Removed in 0.2.1; does nothing.
+
+    Kept for repos whose `.claude/settings.json` still calls it (until `delegate project
+    update` removes the hook). An unknown subcommand exits 2, which Claude Code treats as
+    a blocking Stop hook error.
+    """
 
 
 @hook_app.command("post-commit")

@@ -29,9 +29,7 @@ This command:
 1. Registers the project (key from the repo name, for example `delegate-ai` → `DLG`). Use `--key` to choose the key. A new project starts as `not_started`. Agents cannot change its tasks until you start it (see [Project states](#project-states)).
 2. Adds usage instructions to `CLAUDE.md` (use `--file AGENTS.md` for other agents).
 3. Adds the MCP server to `.mcp.json`, and allows its tools in `.claude/settings.json` (`permissions.allow`: `mcp__delegate`), so Claude Code does not ask before each call.
-4. Adds Claude Code hooks to `.claude/settings.json`:
-   - **SessionStart** puts the project status into the agent's context.
-   - **Stop** asks the agent one time to complete or release the tasks that it holds.
+4. Adds a Claude Code **SessionStart** hook to `.claude/settings.json`. It puts the project status into the agent's context. (Versions before 0.2.1 also added a Stop hook. `delegate project update` removes it.)
 5. Adds a git `post-commit` hook. Commits that mention a task ref (for example `DLG-12`) are linked to that task.
 
 All steps are idempotent. They merge into existing files. Use `--no-mcp`, `--no-hooks`, or `--no-git-hook` to skip a step.

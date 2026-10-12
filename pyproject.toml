@@ -1,6 +1,6 @@
 [project]
 name = "delegate"
-version = "0.2.0"
+version = "0.2.1"
 description = "Task and project tracker for coding agents (MCP server, CLI, web dashboard)"
 authors = [
     { name = "sameer-n012", email = "sameer.narendran@gmail.com" }

@@ -69,7 +69,7 @@ def test_init_repo_is_idempotent_and_merges(make_service: ServiceFactory, tmp_pa
     assert "--as" in claude_md and "preferred" in claude_md
     assert ".claude/settings.json (permissions)" in second.unchanged
     stop_cmds = [h["command"] for g in settings["hooks"]["Stop"] for h in g["hooks"]]
-    assert stop_cmds == ["echo hi", "delegate hook stop"]
+    assert stop_cmds == ["echo hi"]
     assert settings["hooks"]["SessionStart"][0]["hooks"][0]["command"] == "delegate hook session-start"
     hook = repo / ".git" / "hooks" / "post-commit"
     assert hook.read_text().count("hook post-commit") == 1
@@ -83,19 +83,39 @@ def test_session_start_context(make_service: ServiceFactory, project: Project) -
     assert "DLG-1 P1 Write docs" in text and "claim_task" in text
 
 
-def test_stop_decision_blocks_once_for_tasks_held_in_cwd(
-    make_service: ServiceFactory, project: Project
-) -> None:
-    make_service("human").create_tasks(project.id, [NewTask(title="A")])
-    agent = make_service("claude#aaaa")
-    agent.register_agent("claude", cwd="/work/a", project_id=project.id)
-    agent.claim_task(project.id)
-    viewer = make_service("human")
+def test_init_repo_removes_old_stop_hook(make_service: ServiceFactory, tmp_path: Path) -> None:
+    repo = tmp_path / "proj"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    (repo / ".claude").mkdir()
+    old = {
+        "hooks": {
+            "Stop": [
+                {"hooks": [{"type": "command", "command": "uv run delegate hook stop"}]},
+                {
+                    "hooks": [
+                        {"type": "command", "command": "echo hi"},
+                        {"type": "command", "command": "delegate hook stop"},
+                    ]
+                },
+            ]
+        }
+    }
+    (repo / ".claude" / "settings.json").write_text(json.dumps(old))
+    project = make_service("human").ensure_project(repo)
 
-    decision = hooks.stop_decision(viewer, project, {"cwd": "/work/a"})
-    assert decision is not None and decision["decision"] == "block" and "DLG-1" in decision["reason"]
-    assert hooks.stop_decision(viewer, project, {"cwd": "/work/a", "stop_hook_active": True}) is None
-    assert hooks.stop_decision(viewer, project, {"cwd": "/elsewhere"}) is None
+    result = init_repo(repo, project, InitOptions(mcp=False, git_hook=False))
+
+    settings = json.loads((repo / ".claude" / "settings.json").read_text())
+    assert settings["hooks"]["Stop"] == [{"hooks": [{"type": "command", "command": "echo hi"}]}]
+    assert ".claude/settings.json (hooks)" in result.changed
+
+    # When only delegate's Stop hook was present, the Stop key goes away.
+    (repo / ".claude" / "settings.json").write_text(
+        json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "delegate hook stop"}]}]}})
+    )
+    init_repo(repo, project, InitOptions(mcp=False, git_hook=False))
+    assert "Stop" not in json.loads((repo / ".claude" / "settings.json").read_text())["hooks"]
 
 
 def test_refs_in_message() -> None:
