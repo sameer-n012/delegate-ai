@@ -4,6 +4,7 @@ Each step is idempotent and merges into existing files instead of replacing them
 
 * instructions block in CLAUDE.md / AGENTS.md (between marker comments)
 * `.mcp.json` server entry (Claude Code project-scoped MCP config)
+* `.claude/settings.json` allow rule for the MCP tools, so Claude Code does not prompt
 * `.claude/settings.json` SessionStart and Stop hooks
 * git `post-commit` hook that links commits mentioning task refs
 """
@@ -30,8 +31,10 @@ def instructions_block(project: Project) -> str:
 ## Task tracking (delegate)
 
 This repo tracks work in **delegate** (project key `{project.key}`; tasks look like `{project.key}-42`).
-Use the `delegate` MCP tools (or the `delegate` CLI with `--json`; CLI users must set
-`DELEGATE_AGENT=<tool>#<id>`, e.g. `codex#7f2a`, or every write is refused; never use `human`).
+Use the `delegate` MCP tools. They are the preferred method: they know your agent id and need no
+permission prompts. Use the CLI only if the MCP tools are not available: pass your id with `--as`
+on every command and add `--json`, e.g. `delegate --as codex#7f2a --json claim`. Pick one id
+(`<tool>#<4 hex>`) per session and keep it. Without `--as`, every write is refused; never use `human`.
 Agents can change tasks only while the project is `in_progress`; if it is not, ask the user.
 
 1. Start with `project_status` to see ready work, your claims, and blockers.
@@ -112,6 +115,26 @@ def write_claude_hooks(root: Path, command: list[str]) -> bool:
     return changed
 
 
+MCP_ALLOW_RULE = "mcp__delegate"
+"""Claude Code permission rule that allows every tool of the `delegate` MCP server."""
+
+
+def allow_mcp_tools(root: Path) -> bool:
+    """Add the delegate MCP tools to `permissions.allow` in `.claude/settings.json`.
+
+    This stops Claude Code from asking before each tracker call. Returns True if the file changed.
+    """
+    path = root / ".claude" / "settings.json"
+    data = _load_json_object(path)
+    permissions = cast(dict[str, Any], data.setdefault("permissions", {}))
+    allow = cast(list[str], permissions.setdefault("allow", []))
+    if MCP_ALLOW_RULE in allow:
+        return False
+    allow.append(MCP_ALLOW_RULE)
+    _write_json(path, data)
+    return True
+
+
 def install_git_hook(cwd: Path, command: list[str]) -> tuple[Path, bool] | None:
     """Add a post-commit hook (shared by all worktrees).
 
@@ -165,8 +188,9 @@ def init_repo(
 
     if mcp:
         note(".mcp.json", write_mcp_config(root, command))
+        note(".claude/settings.json (permissions)", allow_mcp_tools(root))
     if hooks:
-        note(".claude/settings.json", write_claude_hooks(root, command))
+        note(".claude/settings.json (hooks)", write_claude_hooks(root, command))
     if git_hook:
         installed = install_git_hook(cwd, command)
         if installed is not None:

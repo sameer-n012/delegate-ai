@@ -1037,7 +1037,7 @@ class _WriteTxn:
     def __enter__(self) -> sqlite3.Connection:
         if self._service.actor.is_anonymous:
             raise IdentityRequiredError(
-                "No identity: set DELEGATE_AGENT (e.g. codex#7f2a) or pass --as. "
+                "No identity: pass --as <tool>#<id> (e.g. --as codex#7f2a) or set DELEGATE_AGENT. "
                 "People use --as human."
             )
         conn = self._cm.__enter__()

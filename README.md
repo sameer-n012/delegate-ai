@@ -28,7 +28,7 @@ This command:
 
 1. Registers the project (key from the repo name, for example `delegate-ai` → `DLG`). Use `--key` to choose the key. A new project starts as `not_started`. Agents cannot change its tasks until you start it (see [Project states](#project-states)).
 2. Adds usage instructions to `CLAUDE.md` (use `--file AGENTS.md` for other agents).
-3. Adds the MCP server to `.mcp.json`.
+3. Adds the MCP server to `.mcp.json`, and allows its tools in `.claude/settings.json` (`permissions.allow`: `mcp__delegate`), so Claude Code does not ask before each call.
 4. Adds Claude Code hooks to `.claude/settings.json`:
    - **SessionStart** puts the project status into the agent's context.
    - **Stop** asks the agent one time to complete or release the tasks that it holds.
@@ -48,8 +48,9 @@ If `delegate` is not on your PATH, give the full command: `delegate init --comma
 | Finish | `complete_task` | `delegate done DLG-4 "summary" --link commit=abc123` |
 | Stop early | `release_task` | `delegate release DLG-4 "handoff notes"` |
 
-CLI agents must set `DELEGATE_AGENT` (for example `DELEGATE_AGENT=codex#7f2a`). Without an identity, the CLI is `anonymous`: reads work, but every write is refused.
-People use `--as human` (or `DELEGATE_AGENT=human`). Humans bypass holder checks, so an agent must never use `human`.
+Agents should use the MCP tools when they can. The CLI is the fallback.
+CLI agents pass their id with `--as` on every command (for example `delegate --as codex#7f2a claim`). The `DELEGATE_AGENT` environment variable also works, but `--as` is preferred: every command then starts with `delegate`, which makes permission rules simpler. Without an identity, the CLI is `anonymous`: reads work, but every write is refused.
+People use `--as human`. Humans bypass holder checks, so an agent must never use `human`. For the same reason, do not allow `Bash(delegate:*)` for agents: that rule would also allow `delegate --as human`.
 Add `--json` to any CLI command for machine-readable output.
 
 ## Project states

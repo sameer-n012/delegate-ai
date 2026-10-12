@@ -42,7 +42,11 @@ def test_init_repo_is_idempotent_and_merges(make_service: ServiceFactory, tmp_pa
     _git(repo, "init", "-b", "main")
     (repo / "CLAUDE.md").write_text("# Existing rules\n")
     (repo / ".claude").mkdir()
-    existing = {"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]}, "x": 1}
+    existing = {
+        "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo hi"}]}]},
+        "permissions": {"allow": ["Bash(ls:*)"]},
+        "x": 1,
+    }
     (repo / ".claude" / "settings.json").write_text(json.dumps(existing))
     project = make_service("human").ensure_project(repo)
 
@@ -56,6 +60,9 @@ def test_init_repo_is_idempotent_and_merges(make_service: ServiceFactory, tmp_pa
     assert mcp["mcpServers"]["delegate"] == {"type": "stdio", "command": "delegate", "args": ["mcp"]}
     settings = json.loads((repo / ".claude" / "settings.json").read_text())
     assert settings["x"] == 1
+    assert settings["permissions"]["allow"] == ["Bash(ls:*)", "mcp__delegate"]
+    assert "--as" in claude_md and "preferred" in claude_md
+    assert ".claude/settings.json (permissions)" in second.unchanged
     stop_cmds = [h["command"] for g in settings["hooks"]["Stop"] for h in g["hooks"]]
     assert stop_cmds == ["echo hi", "delegate hook stop"]
     assert settings["hooks"]["SessionStart"][0]["hooks"][0]["command"] == "delegate hook session-start"

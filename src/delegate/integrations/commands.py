@@ -38,7 +38,9 @@ def init_command(
     key: Annotated[
         str | None, typer.Option("--key", help="Project key to use when registering a new project.")
     ] = None,
-    no_mcp: Annotated[bool, typer.Option("--no-mcp", help="Skip .mcp.json.")] = False,
+    no_mcp: Annotated[
+        bool, typer.Option("--no-mcp", help="Skip .mcp.json and the MCP tool allow rule.")
+    ] = False,
     no_hooks: Annotated[bool, typer.Option("--no-hooks", help="Skip Claude Code hooks.")] = False,
     no_git_hook: Annotated[bool, typer.Option("--no-git-hook", help="Skip the git post-commit hook.")] = False,
 ) -> None:
