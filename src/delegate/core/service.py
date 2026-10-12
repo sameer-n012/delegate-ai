@@ -530,10 +530,10 @@ class TaskService:
         if task_type is not None:
             where.append("t.type = ?")
             params.append(_parse_type(task_type).value)
-        if query:
-            where.append("(t.title LIKE ? ESCAPE '\\' OR t.description LIKE ? ESCAPE '\\')")
-            like = f"%{_escape_like(query)}%"
-            params.extend([like, like])
+        if query and query.strip():
+            clause, clause_params = _task_query_clause(query.strip())
+            where.append(clause)
+            params.extend(clause_params)
         sql = _TASK_SELECT + " WHERE " + " AND ".join(where)
         if ready_only:
             sql = f"SELECT * FROM ({sql}) WHERE ready"
@@ -1098,6 +1098,33 @@ class _WriteTxn:
 def _escape_like(text: str) -> str:
     """Escape LIKE wildcards so user search text matches literally (use with ESCAPE '\\')."""
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _task_query_clause(query: str) -> tuple[str, list[Any]]:
+    """SQL condition for ``list_tasks(query=...)`` on the ``t``/``p`` aliases of ``_TASK_SELECT``.
+
+    Matches the text (case-insensitive for ASCII, as SQLite LIKE) in the title, description,
+    acceptance criteria, note bodies and link refs. A query that is a task ref (``DLG-25``,
+    ``25``, ``#25``) also matches that task; a ref with another project key matches no seq.
+    """
+    like = f"%{_escape_like(query)}%"
+    parts = [
+        "t.title LIKE ? ESCAPE '\\'",
+        "t.description LIKE ? ESCAPE '\\'",
+        "t.acceptance LIKE ? ESCAPE '\\'",
+        "EXISTS (SELECT 1 FROM notes n WHERE n.task_id = t.id AND n.body LIKE ? ESCAPE '\\')",
+        "EXISTS (SELECT 1 FROM links l WHERE l.task_id = t.id AND l.ref LIKE ? ESCAPE '\\')",
+    ]
+    params: list[Any] = [like] * len(parts)
+    if _looks_like_ref(query):
+        key, seq = parse_ref(query)
+        if key is None:
+            parts.append("t.seq = ?")
+            params.append(seq)
+        else:
+            parts.append("(p.key = ? AND t.seq = ?)")
+            params.extend([key, seq])
+    return "(" + " OR ".join(parts) + ")", params
 
 
 def _looks_like_ref(value: str) -> bool:

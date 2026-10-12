@@ -1,0 +1,13 @@
+{% import "_macros.html" as m %}
+{% if results is not none %}
+{% if results.tasks %}
+<p class="count">{% if results.truncated %}First {{ results.tasks|length }} matches{% else %}{{ results.tasks|length }} match{{ 'es' if results.tasks|length != 1 }}{% endif %} for “{{ q }}”</p>
+<ul class="results">
+  {% for t in results.tasks %}
+  <li>{{ m.status_pill(t.status) }}{{ m.type_icon(t.type) }}{{ m.prio(t.priority) }}{{ m.task_link(project.key, t) }}</li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="none">No tasks match “{{ q }}”.</p>
+{% endif %}
+{% endif %}

@@ -17,6 +17,15 @@
     </div>
     {% include "_pstate.html" %}
     <div id="newtask">{% include "_new_task.html" %}</div>
+    <div class="tsearch">
+      <form role="search" action="/p/{{ project.key }}/search" onsubmit="return false">
+        <label class="searchbox"><span class="sr">Search tasks</span>
+          <input type="search" name="q" placeholder="Search tasks: {{ project.key }}-12, title, notes, links…" autocomplete="off"
+                 hx-get="/p/{{ project.key }}/search" hx-trigger="input changed delay:250ms, search"
+                 hx-target="#search-results" hx-swap="innerHTML"></label>
+      </form>
+      <div id="search-results" aria-live="polite"></div>
+    </div>
     <div id="board" class="board-wrap"
          hx-get="/p/{{ project.key }}/board" hx-include="#board-opts"
          hx-trigger="boardChanged from:body, boardOpts from:body, every 30s" hx-swap="innerHTML">

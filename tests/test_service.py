@@ -383,6 +383,35 @@ def test_task_query_escapes_wildcards(make_service: ServiceFactory, project: Pro
     assert [t.title for t in human.list_tasks(project.id, query="100%")] == ["100% coverage"]
 
 
+def test_task_query_matches_all_fields_and_refs(make_service: ServiceFactory, project: Project) -> None:
+    human = make_service("human")
+    human.create_tasks(
+        project.id,
+        [
+            NewTask(title="plain one"),
+            NewTask(title="plain two", acceptance="must handle Zebra input"),
+            NewTask(title="plain three"),
+            NewTask(title="plain four"),
+            NewTask(title="plain five"),
+        ],
+    )
+    human.add_note(project.id, "DLG-3", "decision", "picked the walrus approach")
+    human.add_links(project.id, "DLG-4", [("file", "src/narwhal.py")])
+    human.update_task(project.id, "DLG-5", TaskUpdate(status=Status.DONE))
+
+    def refs(query: str, include_closed: bool = False) -> list[str]:
+        tasks = human.list_tasks(project.id, query=query, include_closed=include_closed)
+        return [t.ref for t in tasks]
+
+    assert refs("zebra") == ["DLG-2"]  # acceptance, case-insensitive
+    assert refs("walrus") == ["DLG-3"]  # note body
+    assert refs("narwhal") == ["DLG-4"]  # link ref
+    assert refs("dlg-1") == ["DLG-1"] and refs("#1") == ["DLG-1"] and refs("1") == ["DLG-1"]
+    assert refs("OTHER-1") == []
+    assert refs("DLG-5") == [] and refs("DLG-5", include_closed=True) == ["DLG-5"]
+    assert len(refs("   ")) == 4  # blank query: no filter
+
+
 def test_events_since(make_service: ServiceFactory, project: Project) -> None:
     svc = make_service("human")
     start = svc.latest_event_id()

@@ -223,7 +223,7 @@ def list_(
     parent: Annotated[str | None, typer.Option(help="Only children of this task.")] = None,
     type_: Annotated[TaskType | None, typer.Option("--type", "-t", help="Only this task type.")] = None,
     ready: Annotated[bool, typer.Option("--ready", help="Only ready tasks.")] = False,
-    query: Annotated[str | None, typer.Option("--query", "-q", help="Match title/description.")] = None,
+    query: Annotated[str | None, typer.Option("--query", "-q", help="Match title, description, acceptance, notes, links, or a task ref.")] = None,
     all_: Annotated[bool, typer.Option("--all", help="Include done and cancelled.")] = False,
     limit: Annotated[int, typer.Option()] = 200,
 ) -> None:

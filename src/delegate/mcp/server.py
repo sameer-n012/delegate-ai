@@ -102,8 +102,8 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
     ) -> str:
         """List tasks, one line each. Closed tasks are hidden unless include_closed or a
         closed status is given. status: todo, in_progress, review, blocked, done, cancelled.
-        parent is a task ref like DLG-1. type filters by task type. query matches title
-        and description."""
+        parent is a task ref like DLG-1. type filters by task type. query matches title,
+        description, acceptance, notes, links, or a task ref."""
 
         def run() -> str:
             try:
