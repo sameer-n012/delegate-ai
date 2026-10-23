@@ -50,6 +50,31 @@ def test_worktrees_share_project(make_service: ServiceFactory, tmp_path: Path) -
     assert svc.ensure_project(repo).id == svc.ensure_project(tmp_path / "wt").id
 
 
+def test_relink_moved_project(make_service: ServiceFactory, tmp_path: Path) -> None:
+    human = make_service("human")
+    old, new, busy = tmp_path / "old", tmp_path / "new", tmp_path / "busy"
+    for d in (old, new, busy):
+        d.mkdir()
+    project = human.ensure_project(old, key="MOV")
+    human.create_tasks(project.id, [NewTask(title="keep me")])
+    # A hook in the moved folder registered it as a new, empty project.
+    placeholder = human.ensure_project(new)
+    with pytest.raises(ForbiddenError):
+        make_service("claude#aaaa").relink_project("MOV", new)
+    moved = human.relink_project("mov", new)
+    assert moved.root_path == str(new.resolve()) and moved.id == project.id
+    assert human.ensure_project(new).id == project.id
+    assert placeholder.key not in {p.key for p in human.list_projects(states=list(ProjectState))}
+    assert human.get_task("MOV-1").title == "keep me"
+    assert human.events_since(0, project_id=project.id)[-1].type == "project_relinked"
+    # A project with tasks at the target path is never removed.
+    other = human.ensure_project(busy, key="BSY")
+    human.create_tasks(other.id, [NewTask(title="mine")])
+    with pytest.raises(ConflictError, match="BSY"):
+        human.relink_project("MOV", busy)
+    assert human.relink_project("MOV", new).root_path == moved.root_path  # no-op
+
+
 def test_derive_key_and_parse_ref() -> None:
     none: set[str] = set()
     assert derive_key("delegate-ai", none) == "DLG"

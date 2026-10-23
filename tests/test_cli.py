@@ -146,6 +146,17 @@ def test_note_and_stdin_note() -> None:
     run("link", ref, "pr", "http://pr/1")
 
 
+def test_project_relink(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    key = run_json("project", "state")["key"]
+    moved = env.parent / "demo-app-moved"
+    moved.mkdir()
+    monkeypatch.chdir(moved)
+    run("--as", "a#1", "project", "relink", key, code=1)  # humans only
+    out = run("project", "relink", key).stdout
+    assert f"now points at {moved.resolve()}" in out
+    assert run_json("project", "state")["key"] == key  # cwd now resolves to the same project
+
+
 def test_release() -> None:
     ref = run_json("add", "Rel")[0]["ref"]
     run("--as", "a#1", "claim", ref)

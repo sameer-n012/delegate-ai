@@ -73,6 +73,10 @@ Each project has a state: `not_started`, `in_progress`, `complete`, `inactive`, 
 - `deleted` is a soft delete. The project is hidden from listings by default, and you can restore it by changing its state.
 - `delegate projects --state deleted -q api` filters the list by state and searches by name, path, or key. The dashboard home page has the same filter and search.
 
+### Moved project folders
+
+If you move a project folder, run `delegate --as human project relink DLG` in the new folder (use your project key). The project then points at the new path and keeps its tasks. If delegate already registered the new folder as a separate, empty project (a hook or the MCP server does this on first use), relink removes that empty project. If that project has tasks, relink fails and changes nothing.
+
 ## Dashboard
 
 ```sh

@@ -373,6 +373,51 @@ class TaskService:
             )
             return self._project_by_id(project.id)
 
+    def relink_project(self, key_or_id: str | int, cwd: Path) -> Project:
+        """Point a project at the repo that contains ``cwd``, after its folder moved. Humans only.
+
+        The root path and git remote become those of the repo at ``cwd``. Hooks and the MCP
+        server auto-register a moved repo as a new project, so a project that already holds
+        this repo is removed if it has no tasks. If it has tasks, the relink is refused.
+        """
+        if not self.actor.is_human:
+            raise ForbiddenError("Only a human can relink a project (use --as human)")
+        info = gitinfo.detect(cwd)
+        root = str(info.root)
+        with self._write():
+            project = self.get_project(key_or_id)
+            others = self.conn.execute(
+                """SELECT p.id, p.key, (SELECT COUNT(*) FROM tasks t WHERE t.project_id = p.id) AS n
+                   FROM projects p
+                   WHERE p.id != ? AND (p.root_path = ? OR (? IS NOT NULL AND p.git_remote = ?))""",
+                (project.id, root, info.remote, info.remote),
+            ).fetchall()
+            for other in others:
+                if other["n"]:
+                    raise ConflictError(
+                        f"{root} belongs to project {other['key']}, which has {other['n']} "
+                        "task(s); relink refused"
+                    )
+            if project.root_path == root and project.git_remote == info.remote and not others:
+                return project
+            for other in others:
+                # Foreign keys remove its events and detach its agents.
+                self.conn.execute("DELETE FROM projects WHERE id = ?", (other["id"],))
+            self.conn.execute(
+                "UPDATE projects SET root_path = ?, git_remote = ? WHERE id = ?",
+                (root, info.remote, project.id),
+            )
+            self._emit(
+                "project_relinked",
+                project.id,
+                payload={
+                    "from": project.root_path,
+                    "to": root,
+                    "removed": [other["key"] for other in others],
+                },
+            )
+            return self._project_by_id(project.id)
+
     def _check_project_open(self, project_id: int) -> None:
         """Agents may change tasks only in in_progress projects. Humans are exempt."""
         if self.actor.is_human:

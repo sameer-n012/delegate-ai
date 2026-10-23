@@ -144,6 +144,8 @@ def describe_event(event: Event) -> str:
             return "project created"
         case "project_setup":
             return f"repo set up with delegate {p.get('version', '?')}"
+        case "project_relinked":
+            return f"project moved to {p.get('to', '?')}"
         case "project_state_changed":
             target = str(p.get("to", "?")).replace("_", " ")
             return f"project \u2192 {target}"
