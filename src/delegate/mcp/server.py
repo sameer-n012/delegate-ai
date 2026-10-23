@@ -154,7 +154,9 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
     ) -> str:
         """Claim a task and start work. Without `ref`, claims the highest-priority ready
         task (optionally under `parent`, and at least as urgent as `max_priority`, e.g. P1).
-        Returns the full task so you can start at once. Claims expire if you go idle."""
+        With `ref`, claims any task nobody holds; a todo task moves to in_progress, other
+        statuses stay. Returns the full task so you can start at once. Claims expire if
+        you go idle."""
 
         def run() -> str:
             pid = target(project).id
@@ -182,9 +184,9 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
         project: str | None = None,
     ) -> str:
         """Change fields of a task you hold (or any non-claimed task). Omitted fields stay
-        as they are. clear_parent=true removes the parent. status cannot be in_progress (use
-        claim_task); use complete_task to finish. expected_version guards against edits
-        by others."""
+        as they are. clear_parent=true removes the parent. status can be in_progress only on
+        a task you hold (use claim_task); use complete_task to finish. A status change keeps
+        your claim. expected_version guards against edits by others."""
 
         def run() -> str:
             update = TaskUpdate(
@@ -242,8 +244,9 @@ def build_server(runtime: Runtime, project: Project, agent_id: str) -> MCPServer
 
     @server.tool()
     def release_task(ref: str, reason: str, project: str | None = None) -> str:
-        """Give a task you hold back to the queue. reason becomes a handoff note: say what
-        is done, what is left, and any pitfalls."""
+        """Drop your claim on a task. The status stays (an in_progress task stays
+        in_progress, unclaimed). reason becomes a handoff note: say what is done, what is
+        left, and any pitfalls."""
 
         def run() -> str:
             task = svc.release_task(target(project).id, ref, reason)

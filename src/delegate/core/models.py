@@ -226,5 +226,9 @@ class ProjectStatus(_Model):
     counts: dict[str, int]
     ready: list[TaskSummary]
     mine: list[Task]
+    """Tasks the caller holds, in any status."""
     in_progress: list[TaskSummary]
+    """Tasks that others hold, in any status."""
+    unclaimed: list[TaskSummary]
+    """In-progress tasks that nobody holds (released, or the lease expired)."""
     blocked: list[BlockedItem]

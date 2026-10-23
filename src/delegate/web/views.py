@@ -118,7 +118,10 @@ def describe_event(event: Event) -> str:
             return f"created {ref}: {p.get('title', '')}"
         case "task_claimed":
             return f"claimed {ref}"
+        case "task_released":
+            return f"released {ref}"
         case "status_changed":
+            # Before DLG-30, a release moved the task to todo and set "released".
             verb = "released" if p.get("released") else "moved"
             return f"{verb} {ref}: {p.get('from', '?')} to {p.get('to', '?')}"
         case "task_updated":
@@ -130,7 +133,7 @@ def describe_event(event: Event) -> str:
         case "link_added":
             return f"linked {p.get('kind', '')} to {ref}"
         case "lease_expired":
-            return f"lease expired on {ref}; returned to todo"
+            return f"lease expired on {ref}; now unclaimed"
         case "agent_registered":
             return "registered"
         case "project_created":
@@ -152,7 +155,8 @@ class AgentView:
 
 def active_agents(svc: TaskService, project: Project) -> list[AgentView]:
     """Agents with a recent heartbeat that belong to, or hold a task in, ``project``."""
-    held = svc.list_tasks(project.id, statuses=[Status.IN_PROGRESS], limit=1000)
+    # A claim does not depend on status, so look at every open task.
+    held = [t for t in svc.list_tasks(project.id, limit=1000) if t.assignee is not None]
     recent = svc.list_agents(active_within_minutes=ACTIVE_AGENT_MINUTES)
     views: list[AgentView] = []
     for agent in recent:

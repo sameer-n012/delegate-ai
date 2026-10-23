@@ -147,12 +147,19 @@ def test_lease_expiry_and_renewal(
     clock.advance(10)
     assert a.get_task("DLG-1").status == Status.IN_PROGRESS
     clock.advance(6)  # 16 min since last write: expired
-    status = make_service("codex#bbbb").project_status(project.id)
-    assert status.counts["in_progress"] == 0
+    b = make_service("codex#bbbb")
+    status = b.project_status(project.id)
+    # The status stays; only the claim goes.
+    assert [t.ref for t in status.unclaimed] == ["DLG-1"]
     task = a.get_task("DLG-1")
-    assert task.status == Status.TODO and task.assignee is None
+    assert task.status == Status.IN_PROGRESS and task.assignee is None
     types = [e.type for e in a.events_since(0)]
     assert "lease_expired" in types
+    # Claim-next still takes only ready todo tasks; the unclaimed task needs a ref.
+    nxt = b.claim_task(project.id)
+    assert nxt is not None and nxt.ref == "DLG-2"
+    again = b.claim_task(project.id, "DLG-1")
+    assert again is not None and again.assignee == "codex#bbbb"
 
 
 def test_agent_transitions(make_service: ServiceFactory, project: Project) -> None:
@@ -163,9 +170,49 @@ def test_agent_transitions(make_service: ServiceFactory, project: Project) -> No
     with pytest.raises(InvalidTransitionError):
         a.update_task(project.id, "DLG-1", TaskUpdate(status=Status.DONE))
     a.claim_task(project.id, "DLG-1")
+    # A status change keeps the claim and its lease.
     t = a.update_task(project.id, "DLG-1", TaskUpdate(status=Status.BLOCKED))
+    assert t.assignee == "claude#aaaa" and t.lease_expires_at is not None
+    t = a.update_task(project.id, "DLG-1", TaskUpdate(status=Status.TODO))
+    assert t.assignee == "claude#aaaa" and not a.get_task_detail("DLG-1").ready
+    # The holder can move its own task back to in_progress.
+    a.update_task(project.id, "DLG-1", TaskUpdate(status=Status.IN_PROGRESS))
+    # Closing a task ends the claim.
+    t = a.update_task(project.id, "DLG-1", TaskUpdate(status=Status.CANCELLED))
     assert t.assignee is None and t.lease_expires_at is None
-    a.update_task(project.id, "DLG-1", TaskUpdate(status=Status.TODO))
+
+
+def test_claim_in_any_status(make_service: ServiceFactory, project: Project) -> None:
+    human = make_service("human")
+    human.create_tasks(project.id, [NewTask(title="A"), NewTask(title="B")])
+    human.update_task(project.id, "DLG-1", TaskUpdate(status=Status.REVIEW))
+    human.update_task(project.id, "DLG-2", TaskUpdate(status=Status.DONE))
+    a, b = make_service("claude#aaaa"), make_service("codex#bbbb")
+    t = a.claim_task(project.id, "DLG-1")
+    assert t is not None and t.status == Status.REVIEW and t.assignee == "claude#aaaa"
+    with pytest.raises(NotHolderError):
+        b.update_task(project.id, "DLG-1", TaskUpdate(status=Status.DONE))
+    done = a.complete_task(project.id, "DLG-1", "reviewed")
+    assert done.status == Status.DONE and done.assignee is None
+    t = a.claim_task(project.id, "DLG-2")
+    assert t is not None and t.status == Status.DONE
+    with pytest.raises(InvalidTransitionError, match="already done"):
+        a.complete_task(project.id, "DLG-2", "again")
+    a.update_task(project.id, "DLG-2", TaskUpdate(status=Status.TODO))  # reopen, still held
+    assert a.get_task("DLG-2").assignee == "claude#aaaa"
+
+
+def test_human_claim_ends_when_leaving_in_progress(
+    make_service: ServiceFactory, project: Project
+) -> None:
+    human = make_service("human")
+    human.create_tasks(project.id, [NewTask(title="A")])
+    t = human.update_task(project.id, "DLG-1", TaskUpdate(status=Status.IN_PROGRESS))
+    assert t.assignee == "human"
+    with pytest.raises(NotHolderError):
+        make_service("claude#aaaa").claim_task(project.id, "DLG-1")
+    t = human.update_task(project.id, "DLG-1", TaskUpdate(status=Status.REVIEW))
+    assert t.assignee is None
 
 
 def test_complete_to_review_then_done(make_service: ServiceFactory, project: Project) -> None:
@@ -192,13 +239,33 @@ def test_cannot_complete_with_open_children(make_service: ServiceFactory, projec
         a.complete_task(project.id, "DLG-1", "done")
 
 
-def test_release_returns_to_queue(make_service: ServiceFactory, project: Project) -> None:
+def test_release_keeps_status(make_service: ServiceFactory, project: Project) -> None:
     make_service("human").create_tasks(project.id, [NewTask(title="A")])
-    a = make_service("claude#aaaa")
+    a, b = make_service("claude#aaaa"), make_service("codex#bbbb")
     a.claim_task(project.id, "DLG-1")
+    with pytest.raises(NotHolderError):
+        b.release_task(project.id, "DLG-1", "not mine")
     t = a.release_task(project.id, "DLG-1", "out of context; next step is X")
-    assert t.status == Status.TODO
+    assert t.status == Status.IN_PROGRESS and t.assignee is None and t.lease_expires_at is None
     assert a.get_task_detail("DLG-1").notes[-1].kind == NoteKind.HANDOFF
+    assert a.events_since(0)[-1].type == "task_released"
+    with pytest.raises(InvalidTransitionError, match="not claimed"):
+        a.release_task(project.id, "DLG-1", "again")
+    # Unclaimed tasks are open to every agent; another agent can pick it up.
+    b.update_task(project.id, "DLG-1", TaskUpdate(priority="P0"))
+    t = b.claim_task(project.id, "DLG-1")
+    assert t is not None and t.status == Status.IN_PROGRESS and t.assignee == "codex#bbbb"
+    b.complete_task(project.id, "DLG-1", "built it", to_review=True)
+    b.claim_task(project.id, "DLG-1")
+    t = b.release_task(project.id, "DLG-1", "review later")
+    assert t.status == Status.REVIEW and t.assignee is None
+
+
+def test_human_releases_any_claim(make_service: ServiceFactory, project: Project) -> None:
+    make_service("human").create_tasks(project.id, [NewTask(title="A")])
+    make_service("claude#aaaa").claim_task(project.id, "DLG-1")
+    t = make_service("human").release_task(project.id, "DLG-1", "stuck agent")
+    assert t.status == Status.IN_PROGRESS and t.assignee is None
 
 
 def test_cycles_rejected(make_service: ServiceFactory, project: Project) -> None:

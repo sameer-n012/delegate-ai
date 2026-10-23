@@ -77,6 +77,8 @@ def status_text(s: ProjectStatus) -> str:
         lines.append(
             "Others:  " + " | ".join(f"{t.ref} {t.title} [{t.assignee}]" for t in s.in_progress)
         )
+    if s.unclaimed:
+        lines.append("Unclaimed in progress: " + " | ".join(_short(t) for t in s.unclaimed))
     if s.blocked:
         lines.append(
             "Blocked: "

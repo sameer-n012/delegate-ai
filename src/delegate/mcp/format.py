@@ -48,7 +48,12 @@ def project_status(status: ProjectStatus, agent_id: str) -> str:
         [f"{t.ref} [{t.priority}] {t.title} (lease until {t.lease_expires_at})" for t in status.mine],
     )
     lines += _section(
-        "Others in progress", [f"{t.ref} [{t.priority}] {t.title} (@{t.assignee})" for t in status.in_progress]
+        "Held by others",
+        [f"{t.ref} [{t.priority} {t.status.value}] {t.title} (@{t.assignee})" for t in status.in_progress],
+    )
+    lines += _section(
+        "Unclaimed in progress (claim by ref to continue)",
+        [summary_line(t) for t in status.unclaimed],
     )
     lines += _section(
         "Blocked",

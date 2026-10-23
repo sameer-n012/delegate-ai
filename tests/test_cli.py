@@ -151,7 +151,7 @@ def test_release() -> None:
     run("--as", "a#1", "claim", ref)
     run("--as", "a#2", "release", ref, "mine now", code=1)
     out = run("--as", "a#1", "release", ref, "handing off").stdout
-    assert "todo" in out
+    assert "in_progress" in out and "a#1" not in out
     assert run_json("show", ref)["notes"][0]["kind"] == "handoff"
 
 

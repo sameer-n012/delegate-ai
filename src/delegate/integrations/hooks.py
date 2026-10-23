@@ -40,8 +40,13 @@ def session_start_context(service: TaskService, project: Project) -> str:
         )
     if status.in_progress:
         lines.append(
-            "In progress: "
+            "Held by others: "
             + " | ".join(f"{t.ref} {t.title} [{t.assignee}]" for t in status.in_progress)
+        )
+    if status.unclaimed:
+        lines.append(
+            "Unclaimed in progress: "
+            + " | ".join(f"{t.ref} {t.priority} {t.title}" for t in status.unclaimed)
         )
     for b in status.blocked:
         lines.append(f"Blocked: {b.task.ref} {b.task.title}" + (f" - {b.reason}" if b.reason else ""))

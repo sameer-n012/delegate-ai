@@ -65,13 +65,14 @@ from delegate.core.models import (
     TaskType,
 )
 
-# Status changes allowed through update_task() for agents. Entering in_progress
-# is only possible through claim_task(). Humans may make any change.
+# Status changes allowed through update_task() for agents. An agent can enter
+# in_progress only on a task that it holds (claim_task() does this for todo tasks).
+# Humans may make any change.
 AGENT_TRANSITIONS: dict[Status, frozenset[Status]] = {
-    Status.TODO: frozenset({Status.BLOCKED, Status.CANCELLED}),
-    Status.BLOCKED: frozenset({Status.TODO, Status.CANCELLED}),
+    Status.TODO: frozenset({Status.IN_PROGRESS, Status.BLOCKED, Status.CANCELLED}),
+    Status.BLOCKED: frozenset({Status.TODO, Status.IN_PROGRESS, Status.CANCELLED}),
     Status.IN_PROGRESS: frozenset({Status.TODO, Status.BLOCKED, Status.REVIEW, Status.CANCELLED}),
-    Status.REVIEW: frozenset({Status.DONE, Status.TODO, Status.CANCELLED}),
+    Status.REVIEW: frozenset({Status.DONE, Status.TODO, Status.IN_PROGRESS, Status.CANCELLED}),
     Status.DONE: frozenset({Status.TODO}),
     Status.CANCELLED: frozenset({Status.TODO}),
 }
@@ -79,9 +80,10 @@ AGENT_TRANSITIONS: dict[Status, frozenset[Status]] = {
 _CLOSED_SQL = "('done','cancelled')"
 
 # Shared SELECT for tasks: adds the project key, parent seq, and the derived ready flag.
+# A claim does not depend on status, so a held todo task is not ready.
 _TASK_SELECT = f"""
 SELECT t.*, p.key AS pkey, pt.seq AS parent_seq,
-  (t.status = 'todo' AND NOT EXISTS (
+  (t.status = 'todo' AND t.assignee IS NULL AND NOT EXISTS (
       SELECT 1 FROM task_deps d JOIN tasks u ON u.id = d.depends_on_id
       WHERE d.task_id = t.id AND u.status NOT IN {_CLOSED_SQL})) AS ready
 FROM tasks t
@@ -181,22 +183,21 @@ class TaskService:
         )
         self.conn.execute(
             """UPDATE tasks SET lease_expires_at = ?
-               WHERE assignee = ? AND status = 'in_progress' AND lease_expires_at IS NOT NULL""",
+               WHERE assignee = ? AND lease_expires_at IS NOT NULL""",
             (self._lease_deadline(), self.actor.id),
         )
 
     def _reap(self) -> int:
-        """Return expired claims to todo. Must run inside a write transaction."""
+        """Drop expired claims. The status stays. Must run inside a write transaction."""
         now = self._now()
         expired = self.conn.execute(
             """SELECT id, project_id, assignee FROM tasks
-               WHERE status = 'in_progress' AND lease_expires_at IS NOT NULL
-                 AND lease_expires_at < ?""",
+               WHERE lease_expires_at IS NOT NULL AND lease_expires_at < ?""",
             (now,),
         ).fetchall()
         for row in expired:
             self.conn.execute(
-                """UPDATE tasks SET status = 'todo', assignee = NULL, lease_expires_at = NULL,
+                """UPDATE tasks SET assignee = NULL, lease_expires_at = NULL,
                    version = version + 1, updated_at = ? WHERE id = ?""",
                 (now, row["id"]),
             )
@@ -216,7 +217,7 @@ class TaskService:
     def reap_expired_leases(self) -> int:
         """Reap if needed. Takes the write lock only when something has expired."""
         has_expired = self.conn.execute(
-            """SELECT 1 FROM tasks WHERE status = 'in_progress' AND lease_expires_at IS NOT NULL
+            """SELECT 1 FROM tasks WHERE lease_expires_at IS NOT NULL
                AND lease_expires_at < ? LIMIT 1""",
             (self._now(),),
         ).fetchone()
@@ -560,8 +561,14 @@ class TaskService:
             " WHERE ready ORDER BY priority, seq LIMIT ?",
             (project_id, ready_limit),
         ).fetchall()
-        active = self.conn.execute(
-            _TASK_SELECT + " WHERE t.project_id = ? AND t.status = 'in_progress' ORDER BY t.priority, t.seq",
+        held = self.conn.execute(
+            _TASK_SELECT + " WHERE t.project_id = ? AND t.assignee IS NOT NULL ORDER BY t.priority, t.seq",
+            (project_id,),
+        ).fetchall()
+        unclaimed = self.conn.execute(
+            _TASK_SELECT
+            + " WHERE t.project_id = ? AND t.status = 'in_progress' AND t.assignee IS NULL"
+            " ORDER BY t.priority, t.seq",
             (project_id,),
         ).fetchall()
         blocked = self.conn.execute(
@@ -579,17 +586,19 @@ class TaskService:
             project=project,
             counts=counts,
             ready=[_summary(r) for r in ready],
-            mine=[_task(r) for r in active if r["assignee"] == self.actor.id],
-            in_progress=[_summary(r) for r in active if r["assignee"] != self.actor.id],
+            mine=[_task(r) for r in held if r["assignee"] == self.actor.id],
+            in_progress=[_summary(r) for r in held if r["assignee"] != self.actor.id],
+            unclaimed=[_summary(r) for r in unclaimed],
             blocked=blocked_items,
         )
 
     # ------------------------------------------------------------------ guards
 
     def _check_holder(self, row: sqlite3.Row) -> None:
+        """Refuse an agent write to a task that someone else holds. Unclaimed tasks are open."""
         if self.actor.is_human:
             return
-        if row["status"] == Status.IN_PROGRESS and row["assignee"] != self.actor.id:
+        if row["assignee"] is not None and row["assignee"] != self.actor.id:
             raise NotHolderError(f"{_ref(row)} is held by {row['assignee']}")
 
     @staticmethod
@@ -716,7 +725,9 @@ class TaskService:
     ) -> Task | None:
         """Claim ``ref``, or the highest-priority ready leaf task. Returns None if nothing is ready.
 
-        Re-claiming a task you already hold just renews its lease.
+        A claim works in any status if nobody holds the task. Claiming a todo task
+        starts it (status in_progress, open dependencies refused). In other statuses
+        the status stays. Re-claiming a task you already hold just renews its lease.
         """
         if self.actor.is_human:
             raise ValidationError("Humans do not claim tasks; set status in the dashboard instead")
@@ -724,15 +735,11 @@ class TaskService:
             if ref is not None:
                 row = self._row(ref, project_id)
                 self._check_project_open(row["project_id"])
-                if row["status"] == Status.IN_PROGRESS:
-                    if row["assignee"] == self.actor.id:
-                        return _task(self._row_by_id(row["id"]))  # lease renewed by _touch
+                if row["assignee"] == self.actor.id:
+                    return _task(self._row_by_id(row["id"]))  # lease renewed by _touch
+                if row["assignee"] is not None:
                     raise NotHolderError(f"{_ref(row)} is already held by {row['assignee']}")
-                if row["status"] != Status.TODO:
-                    raise InvalidTransitionError(
-                        f"{_ref(row)} is {row['status']}; only todo tasks can be claimed"
-                    )
-                if not row["ready"]:
+                if row["status"] == Status.TODO and not row["ready"]:
                     open_deps = [
                         _ref(r)
                         for r in self.conn.execute(
@@ -766,13 +773,14 @@ class TaskService:
                 if row is None:
                     return None
 
-            # BEGIN IMMEDIATE holds the write lock, so the status guard below cannot
+            new_status = Status.IN_PROGRESS if row["status"] == Status.TODO else Status(row["status"])
+            # BEGIN IMMEDIATE holds the write lock, so the assignee guard below cannot
             # lose a race; it is kept as a defensive check.
             cur = self.conn.execute(
-                """UPDATE tasks SET status = 'in_progress', assignee = ?, lease_expires_at = ?,
+                """UPDATE tasks SET status = ?, assignee = ?, lease_expires_at = ?,
                      version = version + 1, updated_at = ?
-                   WHERE id = ? AND status = 'todo'""",
-                (self.actor.id, self._lease_deadline(), self._now(), row["id"]),
+                   WHERE id = ? AND assignee IS NULL""",
+                (new_status.value, self.actor.id, self._lease_deadline(), self._now(), row["id"]),
             )
             if cur.rowcount != 1:
                 raise ConflictError(f"{_ref(row)} was claimed by someone else")
@@ -780,7 +788,10 @@ class TaskService:
             self.conn.execute(
                 "UPDATE agents SET project_id = ? WHERE id = ?", (row["project_id"], self.actor.id)
             )
-            self._emit("task_claimed", row["project_id"], row["id"], {"from": row["status"]})
+            self._emit(
+                "task_claimed", row["project_id"], row["id"],
+                {"from": row["status"], "to": new_status.value},
+            )
             return _task(self._row_by_id(row["id"]))
 
     def update_task(
@@ -871,20 +882,28 @@ class TaskService:
             return _task(self._row_by_id(row["id"]))
 
     def _transition_fields(self, row: sqlite3.Row, to: Status, now: str) -> dict[str, Any]:
-        """Validate a status change and return the columns it sets."""
+        """Validate a status change and return the columns it sets.
+
+        The claim stays on a status change, with two exceptions: closing a task
+        (done, cancelled) ends any claim, and a human claim (no lease) ends when
+        the task leaves in_progress.
+        """
         current = Status(row["status"])
         if not self.actor.is_human:
-            if to == Status.IN_PROGRESS:
+            if to == Status.IN_PROGRESS and row["assignee"] != self.actor.id:
                 raise InvalidTransitionError("Use claim_task to start work on a task")
             if to not in AGENT_TRANSITIONS[current]:
                 raise InvalidTransitionError(f"Cannot move {_ref(row)} from {current} to {to}")
             if to == Status.DONE:
                 self._check_no_open_children(row)
         fields: dict[str, Any] = {"status": to.value}
-        if to == Status.IN_PROGRESS:
-            # Only humans reach here. Human work has no lease and never expires.
-            fields.update(assignee=HUMAN, lease_expires_at=None)
-        else:
+        if to.is_closed:
+            fields.update(assignee=None, lease_expires_at=None)
+        elif to == Status.IN_PROGRESS:
+            if row["assignee"] is None:
+                # Only humans reach here. Human work has no lease and never expires.
+                fields.update(assignee=HUMAN, lease_expires_at=None)
+        elif row["assignee"] == HUMAN:
             fields.update(assignee=None, lease_expires_at=None)
         if to.is_closed:
             fields["closed_at"] = now
@@ -980,11 +999,12 @@ class TaskService:
             row = self._row(ref, project_id)
             self._check_project_open(row["project_id"])
             self._check_version(row, expected_version)
-            if not self.actor.is_human:
-                if row["status"] != Status.IN_PROGRESS or row["assignee"] != self.actor.id:
-                    raise NotHolderError(
-                        f"You do not hold {_ref(row)} (status {row['status']}); claim it first"
-                    )
+            if Status(row["status"]).is_closed:
+                raise InvalidTransitionError(f"{_ref(row)} is already {row['status']}")
+            if not self.actor.is_human and row["assignee"] != self.actor.id:
+                raise NotHolderError(
+                    f"You do not hold {_ref(row)} (status {row['status']}); claim it first"
+                )
             if target == Status.DONE:
                 self._check_no_open_children(row)
             now = self._now()
@@ -1003,24 +1023,27 @@ class TaskService:
             return _task(self._row_by_id(row["id"]))
 
     def release_task(self, project_id: int | None, ref: str | int, reason: str) -> Task:
-        """Give a held task back to the queue with a handoff note."""
+        """Drop the claim on a held task with a handoff note. The status stays.
+
+        Agents can release only their own claims. Humans can release any claim.
+        """
         if not reason.strip():
             raise ValidationError("A release reason is required (it becomes a handoff note)")
         with self._write():
             row = self._row(ref, project_id)
             self._check_project_open(row["project_id"])
-            if row["status"] != Status.IN_PROGRESS:
-                raise InvalidTransitionError(f"{_ref(row)} is {row['status']}, not in_progress")
+            if row["assignee"] is None:
+                raise InvalidTransitionError(f"{_ref(row)} is not claimed")
             self._check_holder(row)
             self._insert_note(row, NoteKind.HANDOFF, reason)
             self.conn.execute(
-                """UPDATE tasks SET status = 'todo', assignee = NULL, lease_expires_at = NULL,
+                """UPDATE tasks SET assignee = NULL, lease_expires_at = NULL,
                      version = version + 1, updated_at = ? WHERE id = ?""",
                 (self._now(), row["id"]),
             )
             self._emit(
-                "status_changed", row["project_id"], row["id"],
-                {"from": "in_progress", "to": "todo", "released": True},
+                "task_released", row["project_id"], row["id"],
+                {"status": row["status"], "previous_assignee": row["assignee"]},
             )
             return _task(self._row_by_id(row["id"]))
 

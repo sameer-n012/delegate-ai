@@ -435,7 +435,7 @@ def claim(
     parent: Annotated[str | None, typer.Option(help="Only pick from this parent's children.")] = None,
     max_priority: Annotated[str | None, typer.Option(help="Lowest priority to accept, e.g. P1.")] = None,
 ) -> None:
-    """Claim a task (or the next ready one) and start a lease."""
+    """Claim a task (or the next ready one) and start a lease. Works in any status."""
     st = _state()
     task = st.rt().service.claim_task(
         st.project().id, ref, parent=parent, max_priority=max_priority
@@ -534,7 +534,7 @@ def done(
 @app.command()
 @_guarded
 def release(ref: str, reason: str) -> None:
-    """Give a held task back to the queue with a handoff note."""
+    """Drop the claim on a held task with a handoff note. The status stays."""
     st = _state()
     task = st.rt().service.release_task(st.project().id, ref, reason)
     _emit(task, lambda: render.task_line(task))

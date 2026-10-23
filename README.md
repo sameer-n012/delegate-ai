@@ -3,7 +3,7 @@
 Delegate is a task tracker for coding agents. Agents use it through an MCP server or a CLI.
 You monitor and steer their work in a local web dashboard.
 
-- Agents claim tasks. A claim has a lease. If an agent stops, the lease expires and the task goes back to the queue.
+- Agents claim tasks. A claim has a lease. If an agent stops, the lease expires and another agent can claim the task.
 - Tasks have subtasks, dependencies, priorities (P0–P3), types, notes, and links (commits, PRs, files, URLs).
 - Many agents can work in parallel. Claims are atomic.
 - All projects share one SQLite database at `~/.delegate/delegate.db`.
@@ -86,9 +86,10 @@ The home page filters projects by state and searches by name, path, or key. You 
 
 ## Rules
 
-- A task is **ready** when its status is `todo` and all its dependencies are `done` or `cancelled`.
-- Only ready tasks can be claimed. `claim_task` with no ref picks the highest-priority ready task that has no open subtasks.
-- Only the holder can change an `in_progress` task. All agents can add notes.
+- A task is **ready** when its status is `todo`, nobody holds it, and all its dependencies are `done` or `cancelled`.
+- A claim does not depend on the status. An agent can claim any task that nobody holds. Claiming a `todo` task starts it (`in_progress`) and needs its dependencies done. In other statuses, the status stays. `claim_task` with no ref picks the highest-priority ready task that has no open subtasks.
+- Only the holder can change a claimed task. Any agent can change an unclaimed task. All agents can add notes.
+- `release_task` and an expired lease remove the claim and keep the status. `project_status` lists unclaimed `in_progress` tasks so that another agent can claim them by ref. Closing a task (`done`, `cancelled`) also removes the claim.
 - Each write by an agent extends all of its leases. The default lease is 15 minutes.
 - Dependency cycles and parent cycles are rejected.
 - Each task has a type: `feature`, `bug`, `refactor`, `test`, `docs`, `design`, `research`, `chore`, or `unknown`. If you do not give a type, it is `unknown`. Set it with `type` (MCP) or `--type` (CLI). Filter lists with the same option.
