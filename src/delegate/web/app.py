@@ -56,6 +56,8 @@ from delegate.web import views
 WEB_DIR = Path(__file__).parent
 POLL_SECONDS = 1.0
 PING_SECONDS = 15.0
+SIDE_COOKIE = "delegate_side"
+"""Cookie that app.js sets to ``collapsed`` while the board's side panels are collapsed."""
 
 STATUS_FOR_ERROR: tuple[tuple[type[DelegateError], int], ...] = (
     (IdentityRequiredError, 401),
@@ -272,6 +274,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "opts": opts,
         }
 
+    def layout_ctx(request: Request) -> dict[str, Any]:
+        # app.js sets this cookie when the user collapses the side panels, so a full page
+        # load renders them collapsed at once (no flash of the open panels).
+        return {"side_collapsed": request.cookies.get(SIDE_COOKIE) == "collapsed"}
+
     def side_ctx(svc: TaskService, key: str) -> dict[str, Any]:
         project = _project(svc, key)
         return {
@@ -290,7 +297,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> HTMLResponse:
         opts = views.BoardOptions(views.parse_columns(col), q.strip())
         ctx = {**board_ctx(svc, key, opts), **side_ctx(svc, key)}
-        return render(request, "board.html", svc, drawer=None, **ctx)
+        return render(request, "board.html", svc, drawer=None, **ctx, **layout_ctx(request))
 
     @app.get("/p/{key}/board", response_class=HTMLResponse)
     def board_fragment(  # pyright: ignore[reportUnusedFunction]
@@ -323,7 +330,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         headers = {"HX-Trigger": "boardChanged"} if changed else None
         if full_page:
             ctx = {**board_ctx(svc, key, views.BoardOptions()), **side_ctx(svc, key)}
-            return render(request, "board.html", svc, drawer=detail, **ctx)
+            return render(request, "board.html", svc, drawer=detail, **ctx, **layout_ctx(request))
         return render(request, "_drawer.html", svc, headers=headers, project=project, d=detail)
 
     @app.get("/p/{key}/t/{ref}", response_class=HTMLResponse)

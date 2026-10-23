@@ -125,8 +125,15 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 .mark.wait { color: var(--muted); border: 1px dashed var(--muted); }
 .pill { font-size: 12px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--c); color: var(--c); white-space: nowrap; }
 
-/* side */
+/* side: the Agents and Activity panels collapse together (DLG-34) */
+.sidecol { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.side-toggle { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--panel); }
+.side-toggle::after { content: "\25B8"; } /* points right: collapse toward the edge */
 .side { display: flex; flex-direction: column; gap: 12px; }
+.layout.side-collapsed { grid-template-columns: minmax(0, 1fr) 34px; }
+.side-collapsed .side { display: none; }
+.side-collapsed .side-toggle { writing-mode: vertical-rl; padding: 10px 6px; justify-content: flex-start; }
+.side-collapsed .side-toggle::after { content: "\25C2"; }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; }
 .panel h2 { font-size: 13px; margin-bottom: 8px; }
 .agent { padding: 6px 0; border-top: 1px solid var(--line); }
@@ -201,7 +208,11 @@ form.inline input { flex: 1; min-width: 0; }
 .toast b { color: var(--blocked); margin-right: 6px; }
 
 @media (max-width: 1000px) {
-  .layout { grid-template-columns: minmax(0, 1fr); }
+  .layout, .layout.side-collapsed { grid-template-columns: minmax(0, 1fr); }
+  /* The panels sit below the board here, so the toggle stays a horizontal bar. */
+  .side-collapsed .side-toggle { writing-mode: horizontal-tb; padding: 5px 8px; justify-content: space-between; }
+  .side-toggle::after { content: "\25BE"; }
+  .side-collapsed .side-toggle::after { content: "\25B8"; }
   .cards { max-height: 70vh; overflow-y: auto; } /* page scrolls; long columns still scroll alone */
 }
 /* Wide screens: the board page fills the viewport and each column scrolls on its own (DLG-25).
@@ -217,7 +228,9 @@ form.inline input { flex: 1; min-width: 0; }
   .boardpage .col { display: flex; flex-direction: column; min-height: 0; }
   .boardpage .col h2 { flex: none; }
   .boardpage .cards { flex: 1; min-height: 0; overflow-y: auto; }
-  .boardpage .side { min-height: 0; overflow-y: auto; }
+  .boardpage .sidecol { min-height: 0; }
+  .boardpage .side-toggle { flex: none; }
+  .boardpage .side { flex: 1; min-height: 0; overflow-y: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .drawer, .drawer[data-open="true"] { transition: none; }

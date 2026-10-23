@@ -96,6 +96,16 @@ def test_column_picker_defaults_and_done_capped(env: Env, client: TestClient) ->
     assert "2/6" in page and 'name="show_done"' not in page
 
 
+def test_side_panels_collapse_from_cookie(client: TestClient) -> None:
+    page = client.get("/p/WEB").text
+    assert 'class="layout"' in page and 'aria-expanded="true"' in page
+    client.cookies.set("delegate_side", "collapsed")
+    page = client.get("/p/WEB").text
+    assert 'class="layout side-collapsed"' in page and 'aria-expanded="false"' in page
+    # The full page with an open drawer uses the same layout state.
+    assert 'class="layout side-collapsed"' in client.get("/p/WEB/t/WEB-1").text
+
+
 def test_search_filters_board_columns(env: Env, client: TestClient) -> None:
     human = env.service("human")
     human.add_note(env.project.id, "WEB-3", "decision", "Use mkdocs")

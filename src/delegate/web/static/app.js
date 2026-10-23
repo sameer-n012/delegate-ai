@@ -63,7 +63,20 @@
     var d = drawer();
     downInDrawer = !!d && d.contains(e.target);
   });
+  // The Agents and Activity panels collapse together. A cookie keeps the choice, so the
+  // server renders the next page load in the same state (SIDE_COOKIE in app.py).
+  function toggleSide(btn) {
+    var layout = document.querySelector(".layout");
+    var collapsed = layout.classList.toggle("side-collapsed");
+    btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    btn.title = (collapsed ? "Show" : "Hide") + " the Agents and Activity panels";
+    document.cookie = "delegate_side=" + (collapsed ? "collapsed" : "open") +
+      "; path=/; max-age=31536000; SameSite=Lax";
+  }
+
   document.addEventListener("click", function (e) {
+    var sideBtn = e.target.closest && e.target.closest("#side-toggle");
+    if (sideBtn) { toggleSide(sideBtn); return; }
     // A click outside an open column picker closes it.
     document.querySelectorAll("details.colpick[open]").forEach(function (p) {
       if (!p.contains(e.target)) p.removeAttribute("open");
