@@ -1,6 +1,6 @@
 {% import "_macros.html" as m %}
 {% if opts.q %}{% set shown = columns|map(attribute='tasks')|map('length')|sum %}
-<p class="filtered" aria-live="polite">{{ shown }} task{{ 's' if shown != 1 }} match “{{ opts.q }}”{% if not (opts.show_done and opts.show_cancelled) %} in the shown columns{% endif %}.</p>
+<p class="filtered" aria-live="polite">{{ shown }} task{{ 's' if shown != 1 }} match “{{ opts.q }}”{% if not opts.all_columns %} in the shown columns{% endif %}.</p>
 {% endif %}
 <div class="columns">
   {% for col in columns %}

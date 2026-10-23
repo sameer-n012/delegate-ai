@@ -72,23 +72,28 @@ def test_board_columns_and_markers(client: TestClient) -> None:
     assert "claude#a1" in html  # agents panel
 
 
-def test_closed_columns_hidden_by_default_and_done_capped(env: Env, client: TestClient) -> None:
+def _column_labels(html: str) -> list[str]:
+    return [part.split('"')[0] for part in html.split('<section class="col s-')[1:]]
+
+
+def test_column_picker_defaults_and_done_capped(env: Env, client: TestClient) -> None:
     human = env.service("human")
     items = [NewTask(title=f"bulk {i}") for i in range(25)]
     for t in human.create_tasks(env.project.id, items):
         human.update_task(env.project.id, t.ref, _status("done"))
     human.update_task(env.project.id, "WEB-3", _status("cancelled"))
     html = client.get("/p/WEB/board").text
-    assert 'aria-label="Done"' not in html and 'aria-label="Cancelled"' not in html
-    html = client.get("/p/WEB/board?show_done=1").text
+    assert _column_labels(html) == ["todo", "in_progress", "review", "done"]
     done = html.split('aria-label="Done"')[1].split("</section>")[0]
     assert done.count('class="card ') == 20
-    assert 'aria-label="Cancelled"' not in html
-    both = client.get("/p/WEB/board?show_done=1&show_cancelled=1").text
-    assert 'aria-label="Done"' in both and 'aria-label="Cancelled"' in both
-    page = client.get("/p/WEB?show_done=1").text  # full page: toggle state is rendered
-    assert 'name="show_done" value="1" checked' in page
-    assert 'name="show_cancelled" value="1">' in page
+    # The URL picks columns; they show in board order, not URL order.
+    html = client.get("/p/WEB/board?col=cancelled&col=blocked&col=todo").text
+    assert _column_labels(html) == ["todo", "blocked", "cancelled"]
+    assert client.get("/p/WEB/board?col=bogus").status_code == 400
+    page = client.get("/p/WEB?col=blocked&col=cancelled").text  # full page: picker state
+    assert 'name="col" value="blocked" checked' in page
+    assert 'name="col" value="todo">' in page
+    assert "2/6" in page and 'name="show_done"' not in page
 
 
 def test_search_filters_board_columns(env: Env, client: TestClient) -> None:
@@ -99,10 +104,10 @@ def test_search_filters_board_columns(env: Env, client: TestClient) -> None:
     assert 'data-ref="WEB-1"' not in html and 'data-ref="WEB-2"' not in html
     assert "1 task match “mkdocs” in the shown columns" in html
     assert 'data-ref="WEB-2"' in client.get("/p/WEB/board?q=web-2").text  # by ref
-    # A filter on a hidden closed column does not show it.
-    human.update_task(env.project.id, "WEB-3", _status("done"))
+    # A filter does not show cards of a hidden column.
+    human.update_task(env.project.id, "WEB-3", _status("cancelled"))
     assert 'data-ref="WEB-3"' not in client.get("/p/WEB/board?q=mkdocs").text
-    assert 'data-ref="WEB-3"' in client.get("/p/WEB/board?q=mkdocs&show_done=1").text
+    assert 'data-ref="WEB-3"' in client.get("/p/WEB/board?q=mkdocs&col=cancelled").text
     # The full page keeps the filter text in the box.
     page = client.get("/p/WEB?q=%3Cx%3E").text
     assert 'value="&lt;x&gt;"' in page and "/p/WEB/search" not in page

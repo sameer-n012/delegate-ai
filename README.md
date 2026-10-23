@@ -83,6 +83,7 @@ The dashboard shows a board for each project, task details, active agents, and a
 You can create tasks, change status, priority, and type, and add notes. Agents see your notes.
 Each card shows an icon for its task type.
 The home page filters projects by state and searches by name, path, or key. You can change a project's state from its card or from the board header.
+The **Columns** menu next to the filter box chooses which status columns the board shows. By default it shows To do, In progress, Review, and Done. The Done and Cancelled columns show the 20 most recently closed tasks.
 The filter box above the board shows only the cards that match its text. It matches a task ref (`DLG-12`), the title, description, acceptance criteria, notes, and links. The same search is available to agents as `query` in `list_tasks` (MCP) and as `-q` in the CLI.
 
 ## Rules

@@ -15,18 +15,23 @@ from delegate.core import (
     Status,
     TaskService,
     TaskSummary,
+    ValidationError,
 )
 
 ACTIVE_AGENT_MINUTES = 30
 DONE_LIMIT = 20
 ACTIVITY_LIMIT = 30
-BOARD_COLUMNS: tuple[Status, ...] = (
+COLUMN_ORDER: tuple[Status, ...] = (
     Status.TODO,
     Status.IN_PROGRESS,
     Status.REVIEW,
     Status.BLOCKED,
+    Status.DONE,
+    Status.CANCELLED,
 )
-"""Columns that always show. Done and Cancelled show only when their toggle is on."""
+"""Every board column, in display order. The column picker chooses which ones show."""
+DEFAULT_COLUMNS: tuple[Status, ...] = (Status.TODO, Status.IN_PROGRESS, Status.REVIEW, Status.DONE)
+"""Columns that show when the URL does not select any (operator choice, DLG-33)."""
 COLUMN_LABELS: dict[str, str] = {
     "todo": "To do",
     "in_progress": "In progress",
@@ -180,25 +185,37 @@ class Column:
 
 @dataclass(frozen=True, slots=True)
 class BoardOptions:
-    """Which closed columns the board shows (both hidden by default), and the search text.
+    """Which columns the board shows (in ``COLUMN_ORDER``), and the search text.
 
     A non-empty ``q`` shows only the cards that match it (see ``TaskService.list_tasks``).
     """
 
-    show_done: bool = False
-    show_cancelled: bool = False
+    columns: tuple[Status, ...] = DEFAULT_COLUMNS
     q: str = ""
+
+    @property
+    def all_columns(self) -> bool:
+        return len(self.columns) == len(COLUMN_ORDER)
+
+
+def parse_columns(values: Sequence[str] | None) -> tuple[Status, ...]:
+    """Column choices from the URL (``?col=todo&col=done``), in display order.
+
+    No choice means ``DEFAULT_COLUMNS``. An unknown status is an error, not ignored.
+    """
+    if not values:
+        return DEFAULT_COLUMNS
+    try:
+        chosen = {Status(v) for v in values}
+    except ValueError as exc:
+        raise ValidationError(f"Invalid board column in {list(values)!r}") from exc
+    return tuple(s for s in COLUMN_ORDER if s in chosen)
 
 
 def board_columns(svc: TaskService, project: Project, opts: BoardOptions) -> list[Column]:
     columns: list[Column] = []
-    statuses = [
-        *BOARD_COLUMNS,
-        *([Status.DONE] if opts.show_done else []),
-        *([Status.CANCELLED] if opts.show_cancelled else []),
-    ]
     query = opts.q.strip() or None
-    for status in statuses:
+    for status in opts.columns:
         truncated = False
         if status.is_closed:
             # Closed columns show only the most recently closed tasks. Fetch one extra

@@ -36,9 +36,6 @@ textarea { width: 100%; resize: vertical; }
 button { cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
-.toggles { display: flex; gap: 14px; }
-.toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); }
-.toggle input { padding: 0; }
 .live-ind { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .live-ind.on .dot, .dot.live, .agents.live .dot { background: var(--done); box-shadow: 0 0 0 0 var(--done); animation: pulse 2.4s infinite; }
@@ -155,6 +152,16 @@ button.primary { background: var(--accent); color: var(--on-accent); border-colo
 .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .toolbar .searchbox { flex: 1 1 240px; max-width: none; }
 .filtered { margin: 0 0 8px; color: var(--muted); font-size: 13px; }
+.colpick { position: relative; }
+.colpick summary { list-style: none; cursor: pointer; border: 1px solid var(--line); border-radius: 5px; padding: 5px 10px; background: var(--raised); user-select: none; }
+.colpick summary::-webkit-details-marker { display: none; }
+.colpick summary::after { content: "\25BE"; margin-left: 6px; color: var(--muted); }
+.colpick[open] summary, .colpick summary:hover { border-color: var(--accent); }
+.colpick summary .n { color: var(--muted); font-size: 12px; margin-left: 2px; }
+.colpick .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 2px; min-width: 170px; padding: 6px; background: var(--raised); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 6px 20px rgb(0 0 0 / 0.18); }
+.colpick .menu label { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
+.colpick .menu label:hover { background: var(--line); }
+.colpick .menu input { padding: 0; }
 
 /* drawer */
 .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); z-index: 30; background: var(--panel); border-left: 1px solid var(--line); box-shadow: var(--shadow); overflow-y: auto; padding: 14px 16px 40px; transform: translateX(105%); visibility: hidden; transition: transform .18s ease-out, visibility 0s .18s; }

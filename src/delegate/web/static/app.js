@@ -5,11 +5,11 @@
   var drawer = function () { return document.getElementById("drawer"); };
   var boardPath = function () { return "/p/" + document.body.dataset.project; };
 
-  // The board URL keeps the column toggles (show_done, show_cancelled) and the filter
-  // text (q) as query parameters.
+  // The board URL keeps the chosen columns (col, repeated) and the filter text (q) as
+  // query parameters.
   function boardUrl() {
     var params = new URLSearchParams();
-    document.querySelectorAll(".board-opt:checked").forEach(function (o) { params.set(o.name, o.value); });
+    document.querySelectorAll(".board-opt:checked").forEach(function (o) { params.append(o.name, o.value); });
     var search = document.querySelector(".board-q");
     if (search && search.value.trim()) params.set("q", search.value.trim());
     var q = params.toString();
@@ -45,7 +45,14 @@
   document.addEventListener("change", function (e) {
     var t = e.target;
     if (t.id === "project-switch") location.href = t.value ? "/p/" + t.value : "/";
-    if (t.classList && t.classList.contains("board-opt")) boardOptsChanged();
+    if (t.classList && t.classList.contains("board-opt")) {
+      var picked = document.querySelectorAll(".board-opt:checked").length;
+      // Keep at least one column: with none, the server would show the defaults instead.
+      if (picked === 0) { t.checked = true; return; }
+      var n = t.closest(".colpick").querySelector("summary .n");
+      if (n) n.textContent = picked + "/" + document.querySelectorAll(".board-opt").length;
+      boardOptsChanged();
+    }
   });
 
   // A click outside the open drawer closes it. Clicks on links that load a task into the
@@ -57,6 +64,10 @@
     downInDrawer = !!d && d.contains(e.target);
   });
   document.addEventListener("click", function (e) {
+    // A click outside an open column picker closes it.
+    document.querySelectorAll("details.colpick[open]").forEach(function (p) {
+      if (!p.contains(e.target)) p.removeAttribute("open");
+    });
     if (e.target.id === "drawer-close") { closeDrawer(); return; }
     var d = drawer();
     if (!currentRef() || downInDrawer || d.contains(e.target)) return;

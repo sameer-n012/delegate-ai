@@ -268,6 +268,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {
             "project": project,
             "columns": views.board_columns(svc, project, opts),
+            "column_choices": views.COLUMN_ORDER,
             "opts": opts,
         }
 
@@ -284,11 +285,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         key: str,
         svc: Svc,
-        show_done: int = 0,
-        show_cancelled: int = 0,
+        col: Annotated[list[str] | None, Query()] = None,
         q: str = "",
     ) -> HTMLResponse:
-        opts = views.BoardOptions(bool(show_done), bool(show_cancelled), q.strip())
+        opts = views.BoardOptions(views.parse_columns(col), q.strip())
         ctx = {**board_ctx(svc, key, opts), **side_ctx(svc, key)}
         return render(request, "board.html", svc, drawer=None, **ctx)
 
@@ -297,11 +297,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         request: Request,
         key: str,
         svc: Svc,
-        show_done: int = 0,
-        show_cancelled: int = 0,
+        col: Annotated[list[str] | None, Query()] = None,
         q: str = "",
     ) -> HTMLResponse:
-        opts = views.BoardOptions(bool(show_done), bool(show_cancelled), q.strip())
+        opts = views.BoardOptions(views.parse_columns(col), q.strip())
         return render(request, "_board.html", svc, **board_ctx(svc, key, opts))
 
     @app.get("/p/{key}/side", response_class=HTMLResponse)
