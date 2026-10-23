@@ -20,7 +20,6 @@ from delegate.core import (
 ACTIVE_AGENT_MINUTES = 30
 DONE_LIMIT = 20
 ACTIVITY_LIMIT = 30
-SEARCH_LIMIT = 50
 BOARD_COLUMNS: tuple[Status, ...] = (
     Status.TODO,
     Status.IN_PROGRESS,
@@ -181,10 +180,14 @@ class Column:
 
 @dataclass(frozen=True, slots=True)
 class BoardOptions:
-    """Which closed columns the board shows. Both are hidden by default."""
+    """Which closed columns the board shows (both hidden by default), and the search text.
+
+    A non-empty ``q`` shows only the cards that match it (see ``TaskService.list_tasks``).
+    """
 
     show_done: bool = False
     show_cancelled: bool = False
+    q: str = ""
 
 
 def board_columns(svc: TaskService, project: Project, opts: BoardOptions) -> list[Column]:
@@ -194,32 +197,21 @@ def board_columns(svc: TaskService, project: Project, opts: BoardOptions) -> lis
         *([Status.DONE] if opts.show_done else []),
         *([Status.CANCELLED] if opts.show_cancelled else []),
     ]
+    query = opts.q.strip() or None
     for status in statuses:
         truncated = False
         if status.is_closed:
             # Closed columns show only the most recently closed tasks. Fetch one extra
             # row to know whether the column was cut.
             tasks = svc.list_tasks(
-                project.id, statuses=[status], limit=DONE_LIMIT + 1, order="recent"
+                project.id, statuses=[status], query=query, limit=DONE_LIMIT + 1, order="recent"
             )
             truncated = len(tasks) > DONE_LIMIT
             tasks = tasks[:DONE_LIMIT]
         else:
-            tasks = svc.list_tasks(project.id, statuses=[status], limit=1000)
+            tasks = svc.list_tasks(project.id, statuses=[status], query=query, limit=1000)
         columns.append(Column(status, COLUMN_LABELS[status.value], tasks, truncated))
     return columns
-
-
-@dataclass(frozen=True, slots=True)
-class SearchResults:
-    tasks: list[TaskSummary]
-    truncated: bool
-
-
-def search_tasks(svc: TaskService, project: Project, query: str) -> SearchResults:
-    """Tasks of every status that match ``query`` (see ``TaskService.list_tasks``)."""
-    tasks = svc.list_tasks(project.id, query=query, include_closed=True, limit=SEARCH_LIMIT + 1)
-    return SearchResults(tasks[:SEARCH_LIMIT], len(tasks) > SEARCH_LIMIT)
 
 
 @dataclass(frozen=True, slots=True)

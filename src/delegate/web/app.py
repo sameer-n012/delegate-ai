@@ -281,25 +281,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/p/{key}", response_class=HTMLResponse)
     def board(  # pyright: ignore[reportUnusedFunction]
-        request: Request, key: str, svc: Svc, show_done: int = 0, show_cancelled: int = 0
+        request: Request,
+        key: str,
+        svc: Svc,
+        show_done: int = 0,
+        show_cancelled: int = 0,
+        q: str = "",
     ) -> HTMLResponse:
-        opts = views.BoardOptions(bool(show_done), bool(show_cancelled))
+        opts = views.BoardOptions(bool(show_done), bool(show_cancelled), q.strip())
         ctx = {**board_ctx(svc, key, opts), **side_ctx(svc, key)}
         return render(request, "board.html", svc, drawer=None, **ctx)
 
     @app.get("/p/{key}/board", response_class=HTMLResponse)
     def board_fragment(  # pyright: ignore[reportUnusedFunction]
-        request: Request, key: str, svc: Svc, show_done: int = 0, show_cancelled: int = 0
+        request: Request,
+        key: str,
+        svc: Svc,
+        show_done: int = 0,
+        show_cancelled: int = 0,
+        q: str = "",
     ) -> HTMLResponse:
-        opts = views.BoardOptions(bool(show_done), bool(show_cancelled))
+        opts = views.BoardOptions(bool(show_done), bool(show_cancelled), q.strip())
         return render(request, "_board.html", svc, **board_ctx(svc, key, opts))
-
-    @app.get("/p/{key}/search", response_class=HTMLResponse)
-    def search_fragment(request: Request, key: str, svc: Svc, q: str = "") -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
-        project = _project(svc, key)
-        query = q.strip()
-        results = views.search_tasks(svc, project, query) if query else None
-        return render(request, "_search.html", svc, project=project, q=query, results=results)
 
     @app.get("/p/{key}/side", response_class=HTMLResponse)
     def side_fragment(request: Request, key: str, svc: Svc) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]

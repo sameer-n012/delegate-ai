@@ -5,13 +5,30 @@
   var drawer = function () { return document.getElementById("drawer"); };
   var boardPath = function () { return "/p/" + document.body.dataset.project; };
 
-  // The board URL keeps the column toggles (show_done, show_cancelled) as query parameters.
+  // The board URL keeps the column toggles (show_done, show_cancelled) and the filter
+  // text (q) as query parameters.
   function boardUrl() {
     var params = new URLSearchParams();
     document.querySelectorAll(".board-opt:checked").forEach(function (o) { params.set(o.name, o.value); });
+    var search = document.querySelector(".board-q");
+    if (search && search.value.trim()) params.set("q", search.value.trim());
     var q = params.toString();
     return boardPath() + (q ? "?" + q : "");
   }
+
+  // Refresh only the board; the drawer and the URL path stay as they are.
+  function boardOptsChanged() {
+    if (location.pathname === boardPath()) history.replaceState({}, "", boardUrl());
+    htmx.trigger(document.body, "boardOpts");
+  }
+
+  // The filter box refreshes the board 250 ms after the last key press.
+  var filterTimer = null;
+  document.addEventListener("input", function (e) {
+    if (!e.target.classList || !e.target.classList.contains("board-q")) return;
+    clearTimeout(filterTimer);
+    filterTimer = setTimeout(boardOptsChanged, 250);
+  });
 
   function openDrawer(open) {
     var d = drawer();
@@ -28,11 +45,7 @@
   document.addEventListener("change", function (e) {
     var t = e.target;
     if (t.id === "project-switch") location.href = t.value ? "/p/" + t.value : "/";
-    if (t.classList && t.classList.contains("board-opt")) {
-      // Refresh only the board; the drawer and the URL path stay as they are.
-      if (location.pathname === boardPath()) history.replaceState({}, "", boardUrl());
-      htmx.trigger(document.body, "boardOpts");
-    }
+    if (t.classList && t.classList.contains("board-opt")) boardOptsChanged();
   });
 
   // A click outside the open drawer closes it. Clicks on links that load a task into the

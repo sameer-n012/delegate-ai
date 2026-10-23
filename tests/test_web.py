@@ -91,6 +91,23 @@ def test_closed_columns_hidden_by_default_and_done_capped(env: Env, client: Test
     assert 'name="show_cancelled" value="1">' in page
 
 
+def test_search_filters_board_columns(env: Env, client: TestClient) -> None:
+    human = env.service("human")
+    human.add_note(env.project.id, "WEB-3", "decision", "Use mkdocs")
+    html = client.get("/p/WEB/board?q=mkdocs").text
+    assert 'data-ref="WEB-3"' in html
+    assert 'data-ref="WEB-1"' not in html and 'data-ref="WEB-2"' not in html
+    assert "1 task match “mkdocs” in the shown columns" in html
+    assert 'data-ref="WEB-2"' in client.get("/p/WEB/board?q=web-2").text  # by ref
+    # A filter on a hidden closed column does not show it.
+    human.update_task(env.project.id, "WEB-3", _status("done"))
+    assert 'data-ref="WEB-3"' not in client.get("/p/WEB/board?q=mkdocs").text
+    assert 'data-ref="WEB-3"' in client.get("/p/WEB/board?q=mkdocs&show_done=1").text
+    # The full page keeps the filter text in the box.
+    page = client.get("/p/WEB?q=%3Cx%3E").text
+    assert 'value="&lt;x&gt;"' in page and "/p/WEB/search" not in page
+
+
 def _status(value: str):  # noqa: ANN202
     from delegate.core import Status, TaskUpdate
 
