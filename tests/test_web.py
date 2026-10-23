@@ -118,6 +118,21 @@ def test_status_change_updates_db(env: Env, client: TestClient) -> None:
     assert env.service("human").get_task("WEB-3").status.value == "review"
 
 
+def test_release_from_drawer(env: Env, client: TestClient) -> None:
+    drawer = client.get("/p/WEB/t/WEB-1", headers=HX).text
+    assert "Release claim" in drawer
+    r = client.post("/p/WEB/t/WEB-1/release", content="reason=", headers={**FORM, **HX})
+    assert r.status_code == 200 and r.headers["HX-Trigger"] == "boardChanged"
+    assert "Release claim" not in r.text
+    detail = env.service("human").get_task_detail("WEB-1")
+    assert detail.task.assignee is None and detail.task.status.value == "in_progress"
+    assert detail.notes[-1].kind.value == "handoff" and detail.notes[-1].author == "human"
+    # Nothing to release now.
+    r = client.post("/p/WEB/t/WEB-1/release", content="reason=again", headers={**FORM, **HX})
+    assert r.status_code == 400
+    assert "Release claim" not in client.get("/p/WEB/t/WEB-3", headers=HX).text
+
+
 def test_priority_edit_note_link(env: Env, client: TestClient) -> None:
     base = "/p/WEB/t/WEB-3"
     client.post(f"{base}/priority", content="priority=P1", headers=FORM)

@@ -26,6 +26,13 @@
         {% for k in TASK_TYPES %}<option value="{{ k }}"{% if k == t.type.value %} selected{% endif %}>{{ TYPE_LABELS[k] }}</option>{% endfor %}
       </select></label>
   </div>
+  {% if t.assignee %}
+  <form class="inline release" hx-post="{{ base }}/release" hx-target="#drawer-body"
+        hx-confirm="Release {{ t.ref }} from {{ t.assignee }}? The status stays {{ COLUMN_LABELS[t.status.value]|lower }}.">
+    <input name="reason" placeholder="Handoff note (optional)" aria-label="Release reason">
+    <button type="submit">Release claim</button>
+  </form>
+  {% endif %}
 
   <section>
     <h3>Description</h3>

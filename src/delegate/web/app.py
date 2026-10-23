@@ -352,6 +352,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         svc.update_task(project.id, ref, TaskUpdate(status=status))
         return drawer_response(request, svc, key, ref, changed=True)
 
+    @app.post("/p/{key}/t/{ref}/release", response_class=HTMLResponse)
+    def release(request: Request, key: str, ref: str, svc: Svc, form: Form) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
+        # The service needs a reason (it becomes the handoff note), so supply one if empty.
+        reason = form.get("reason", "").strip() or "Released from the dashboard."
+        svc.release_task(_project(svc, key).id, ref, reason)
+        return drawer_response(request, svc, key, ref, changed=True)
+
     @app.post("/p/{key}/t/{ref}/priority", response_class=HTMLResponse)
     def set_priority(request: Request, key: str, ref: str, svc: Svc, form: Form) -> HTMLResponse:  # pyright: ignore[reportUnusedFunction]
         project = _project(svc, key)
