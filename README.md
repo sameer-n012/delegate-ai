@@ -75,7 +75,7 @@ Each project has a state: `not_started`, `in_progress`, `complete`, `inactive`, 
 
 ### Moved project folders
 
-If you move a project folder, run `delegate --as human project relink DLG` in the new folder (use your project key). The project then points at the new path and keeps its tasks. If delegate already registered the new folder as a separate, empty project (a hook or the MCP server does this on first use), relink removes that empty project. If that project has tasks, relink fails and changes nothing.
+If you move a project folder, run `delegate --as human init --relink DLG` in the new folder (use your project key). The project then points at the new path and keeps its tasks. After the relink, `init` continues as usual: it sets up the folder if it is not set up yet, and otherwise changes nothing (add `--force` to set it up again). If delegate already registered the new folder as a separate, empty project (a hook or the MCP server does this on first use), relink removes that empty project. If that project has tasks, relink fails and changes nothing.
 
 ## Dashboard
 

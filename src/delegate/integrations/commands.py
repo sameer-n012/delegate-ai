@@ -17,7 +17,7 @@ import typer
 from delegate import __version__
 from delegate.integrations import hooks as hook_logic
 from delegate.integrations.setup import InitOptions, InitResult, apply_setup, setup_info
-from delegate.core import ANONYMOUS, Project, ProjectState
+from delegate.core import ANONYMOUS, DelegateError, Project, ProjectState
 from delegate.core.gitinfo import detect
 from delegate.runtime import open_runtime, resolve_actor
 
@@ -27,6 +27,7 @@ hook_app = typer.Typer(help="Hook entry points (called by Claude Code and git, n
 
 
 def init_command(
+    ctx: typer.Context,
     command: Annotated[
         str,
         typer.Option(
@@ -48,15 +49,29 @@ def init_command(
     force: Annotated[
         bool, typer.Option("--force", help="Run again on a repo that is already set up, with these options.")
     ] = False,
+    relink: Annotated[
+        str | None,
+        typer.Option(
+            "--relink",
+            metavar="KEY",
+            help="Move an existing project (e.g. DLG) to this repo after its folder moved. "
+            "Humans only: delegate --as human init --relink DLG.",
+        ),
+    ] = None,
 ) -> None:
     """Set up this repo for agents: instructions, MCP config, Claude Code hooks, git hook.
 
     Does nothing on a repo that is already set up (by any version). Use `delegate project
     update` to refresh it, or `--force` to set it up again with new options.
+
+    With `--relink KEY`, first point project KEY at this repo (see
+    `TaskService.relink_project`). An empty project registered for this folder is removed.
     """
     cmd = shlex.split(command)
     if not cmd:
         raise typer.BadParameter("--command must not be empty")
+    if relink is not None and key is not None:
+        raise typer.BadParameter("--key names a new project; --relink uses an existing one")
     options = InitOptions(
         command=cmd,
         instructions_file=instructions_file,
@@ -64,10 +79,20 @@ def init_command(
         hooks=not no_hooks,
         git_hook=not no_git_hook,
     )
-    rt = open_runtime()
+    # The global --as option is a parameter of the root (app callback) context.
+    actor = cast("str | None", ctx.find_root().params.get("as_"))
+    rt = open_runtime(actor)
     try:
         cwd = Path.cwd()
-        project = rt.service.ensure_project(cwd, key=key)
+        if relink is not None:
+            try:
+                project = rt.service.relink_project(relink, cwd)
+            except DelegateError as exc:
+                typer.echo(f"error[{exc.code}]: {exc}", err=True)
+                raise typer.Exit(1) from exc
+            typer.echo(f"Project {project.name} ({project.key}) now points at {project.root_path}")
+        else:
+            project = rt.service.ensure_project(cwd, key=key)
         info = setup_info(rt.service, project, detect(cwd).root)
         if info.is_set_up and not force:
             version = info.recorded.version if info.recorded else "an older version"

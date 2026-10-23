@@ -316,19 +316,6 @@ def project_update() -> None:
     )
 
 
-@project_app.command("relink")
-@_guarded
-def project_relink(
-    key: Annotated[str, typer.Argument(help="Key of the project to move to this repo, e.g. DLG.")],
-) -> None:
-    """Point a project at the repo in the current directory, after its folder moved (humans only).
-
-    An empty project that was registered for the new folder is removed.
-    """
-    project = _state().rt().service.relink_project(key, Path.cwd())
-    _emit(project, lambda: f"{project.key} ({project.name}) now points at {project.root_path}")
-
-
 @project_app.command("state")
 @_guarded
 def project_state(

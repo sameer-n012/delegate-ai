@@ -151,10 +151,13 @@ def test_project_relink(env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     moved = env.parent / "demo-app-moved"
     moved.mkdir()
     monkeypatch.chdir(moved)
-    run("--as", "a#1", "project", "relink", key, code=1)  # humans only
-    out = run("project", "relink", key).stdout
-    assert f"now points at {moved.resolve()}" in out
+    run("--as", "a#1", "init", "--relink", key, code=1)  # humans only
+    run("init", "--relink", key, "--key", "NEW", code=2)  # --key is for new projects
+    out = run("init", "--relink", key, "--no-git-hook").stdout
+    assert f"now points at {moved.resolve()}" in out and "updated   CLAUDE.md" in out
     assert run_json("project", "state")["key"] == key  # cwd now resolves to the same project
+    # Once set up, a second relink only moves the project; init itself is a no-op.
+    assert "already set up" in run("init", "--relink", key).stdout
 
 
 def test_release() -> None:
